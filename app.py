@@ -342,7 +342,7 @@ def _phase1():
         st.subheader('📊 Simulaatiotulokset')
         components.html(
             _make_temperature_animation(
-                temp, year_start=1900, year_end=CHECKPOINT + 20,
+                temp, year_start=1900, year_end=CHECKPOINT,
                 highlight_year=CHECKPOINT,
                 inset_metrics=[
                     ('Malli: lämpötila nyt (2024)',        f'+{t_now:.2f} °C'),
