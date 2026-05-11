@@ -27,6 +27,10 @@ CONSTRAINT_SET = 'all-2022'
 # SSP2-4.5 is "middle of the road" — reasonable as current-policy backdrop.
 BASE_SSP = 'ssp245'
 
+# Phase 1 pledge year: CO2 cuts are specified relative to this year.
+# Must match CHECKPOINT in app.py.
+CHECKPOINT_YEAR = 2040
+
 # Approximate 2023 fossil CO2 emissions by region (GtCO2/yr), from GCP 2023.
 # Total ~40 GtCO2/yr, consistent with recent GCP estimates.
 REGION_EMISSIONS_2023_GTCO2 = {
@@ -81,16 +85,16 @@ def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end
     Build a global annual CO2 FFI emission time series (GtC/yr) from 1750 to year_end.
 
     1750–2022: zeros here — caller leaves the SSP2-4.5 historical values intact.
-    2023–2040: each region ramps linearly from its 2023 baseline to (1−cut)×baseline.
-    2040–netzero_year: each region ramps linearly from its 2040 level to zero.
-    After netzero_year (or if no netzero given): held at the 2040 level.
+    2023–CHECKPOINT_YEAR: each region ramps linearly from its 2023 baseline to (1−cut)×baseline.
+    CHECKPOINT_YEAR–netzero_year: each region ramps linearly from its checkpoint level to zero.
+    After netzero_year (or if no netzero given): held at the checkpoint level.
 
     Parameters
     ----------
     cuts : dict
         {region: fraction_cut} where fraction_cut ∈ [0, 1].
     netzero_years : dict or None
-        {region: year} for Phase 2; None keeps each region at its 2040 level.
+        {region: year} for Phase 2; None keeps each region at its checkpoint level.
     year_end : int
         Last year of the FaIR run.
 
@@ -104,24 +108,24 @@ def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end
     trajectory = np.zeros(len(years))
 
     for region, base_gtco2 in REGION_EMISSIONS_2023_GTCO2.items():
-        cut = cuts.get(region, 0.0)
-        em_2023 = base_gtco2 * CO2_TO_C         # GtC/yr
-        em_2040 = base_gtco2 * (1.0 - cut) * CO2_TO_C
+        cut    = cuts.get(region, 0.0)
+        em_2023 = base_gtco2 * CO2_TO_C                    # GtC/yr
+        em_chk  = base_gtco2 * (1.0 - cut) * CO2_TO_C     # pledged level at CHECKPOINT_YEAR
 
-        # 2023–2040: linear ramp from 2023 baseline to pledged 2040 level
-        mask1 = (years >= 2023) & (years < 2040)
-        t1 = (years[mask1] - 2023) / 17.0
-        trajectory[mask1] += em_2023 + t1 * (em_2040 - em_2023)
+        # 2023 → CHECKPOINT_YEAR: linear ramp
+        mask1 = (years >= 2023) & (years < CHECKPOINT_YEAR)
+        t1 = (years[mask1] - 2023) / float(CHECKPOINT_YEAR - 2023)
+        trajectory[mask1] += em_2023 + t1 * (em_chk - em_2023)
 
         nz = (netzero_years or {}).get(region)
-        if nz and nz > 2040:
-            # 2040 → netzero_year: linear decline to zero
-            mask2 = (years >= 2040) & (years < nz)
-            t2 = (years[mask2] - 2040) / float(nz - 2040)
-            trajectory[mask2] += em_2040 * (1.0 - t2)
+        if nz and nz > CHECKPOINT_YEAR:
+            # CHECKPOINT_YEAR → netzero_year: linear decline to zero
+            mask2 = (years >= CHECKPOINT_YEAR) & (years < nz)
+            t2 = (years[mask2] - CHECKPOINT_YEAR) / float(nz - CHECKPOINT_YEAR)
+            trajectory[mask2] += em_chk * (1.0 - t2)
             # after netzero_year: zero (no CDR)
         else:
-            trajectory[years >= 2040] += em_2040
+            trajectory[years >= CHECKPOINT_YEAR] += em_chk
 
     return trajectory
 
@@ -301,7 +305,7 @@ def run_fair_game(cuts: dict, netzero_years: dict | None, config_id: int) -> xr.
     cuts : dict
         {region: fraction_cut} where fraction_cut ∈ [0, 1].
     netzero_years : dict or None
-        {region: year} for Phase 2 net-zero dates; None holds 2040 levels flat.
+        {region: year} for Phase 2 net-zero dates; None holds checkpoint levels flat.
     config_id : int
         Row index from data/screened_configs.csv / the calibrated posterior.
 

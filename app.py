@@ -2,7 +2,7 @@
 """
 Ilmastoneuvottelupeli — FaIR-pohjainen luokkahuonedemosovellus.
 
-Vaihe 1: Ryhmät sopivat CO2-päästöleikkauksista vuoteen 2040.
+Vaihe 1: Ryhmät sopivat CO2-päästöleikkauksista vuoteen 2040 (CHECKPOINT).
 Vaihe 2: Kukin ryhmä sopii omasta nollapäästövuodestaan ja näkee huipputulämpötilan.
 
 ECS paljastetaan vasta ensimmäisen simulaation jälkeen, jotta se voidaan
@@ -10,7 +10,9 @@ huomioida vaiheen 2 päätöksissä.
 """
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.animation as mpl_anim
 import streamlit as st
+import streamlit.components.v1 as components
 
 from fair_runner import (
     REGION_EMISSIONS_2023_GTCO2,
@@ -19,9 +21,12 @@ from fair_runner import (
     run_fair_game,
 )
 
-TOTAL_2023 = sum(REGION_EMISSIONS_2023_GTCO2.values())
-PARIS_15   = 1.5
-PARIS_20   = 2.0
+TOTAL_2023   = sum(REGION_EMISSIONS_2023_GTCO2.values())
+PARIS_15     = 1.5
+PARIS_20     = 2.0
+CHECKPOINT      = 2040   # Phase 1 pledge year
+ANIM_START      = 2026   # year from which temperature trajectory is animated
+ANIM_INTERVAL   = 80     # ms per animation frame (increase to slow down)
 
 REGION_COLORS = {
     'Kiina 🇨🇳':      '#E26D91',
@@ -94,16 +99,18 @@ def _nav_bar():
     st.markdown('---')
 
 
-def _make_temperature_plot(temp_da, year_start, year_end,
-                            highlight_year=None, show_peak=False,
-                            phase1_da=None, inset_metrics=None):
+def _make_temperature_animation(temp_da, year_start, year_end,
+                                 highlight_year=None, show_peak=False,
+                                 phase1_da=None, inset_metrics=None):
     """
-    Draw a single-config temperature trajectory with observed GMST overlay.
+    Animated temperature trajectory: historical portion (up to ANIM_START) is static;
+    future portion is drawn year-by-year. Returns an HTML string for components.html().
 
-    temp_da      : xr.DataArray dim 'timebounds', single config
-    phase1_da    : if given, draw Phase 1 trajectory as grey dashed line up to 2040
-    highlight_year : draw a dotted vertical line here (Phase 1: 2040; Phase 2: peak year)
-    show_peak    : annotate peak with arrow; suppresses text label on vertical line
+    temp_da        : xr.DataArray dim 'timebounds', single config
+    phase1_da      : if given, draw Phase 1 trajectory as grey dashed line (static)
+    highlight_year : dotted vertical line (Phase 1: CHECKPOINT; Phase 2: peak year)
+    show_peak      : annotate peak with arrow on final animation frame
+    inset_metrics  : list of (label, value_str) shown as text box on final frame
     """
     gmst = _load_gmst()
 
@@ -116,18 +123,30 @@ def _make_temperature_plot(temp_da, year_start, year_end,
     yr     = years[mask]
     t_vals = temp_da.isel(timebounds=mask).values
 
+    # Split at animation boundary; overlap by one point so the line is continuous
+    h_mask   = yr <= ANIM_START
+    fut_mask = yr >= ANIM_START
+    yr_fut   = yr[fut_mask]
+    t_fut    = t_vals[fut_mask]
+
+    # Fix axis limits before drawing so text placements are stable
+    y_min = min(float(t_vals.min()), 0.0) - 0.15
+    y_max = float(t_vals.max()) + 0.45
+    ax.set_xlim(year_start, year_end)
+    ax.set_ylim(y_min, y_max)
+
+    # --- static elements ---
     if phase1_da is not None:
         yr1 = phase1_da.timebounds.values
-        m1  = (yr1 >= year_start) & (yr1 <= 2040)
+        m1  = (yr1 >= year_start) & (yr1 <= CHECKPOINT)
         ax.plot(yr1[m1], phase1_da.isel(timebounds=m1).values,
-                color='#888888', linewidth=2.5, linestyle='--',
-                label='Vaihe 1')
+                color='#888888', linewidth=2.5, linestyle='--', label='Vaihe 1')
 
-    ax.plot(yr, t_vals, color='#5A84E2', linewidth=2.5, label='Ilmastomalli')
+    ax.plot(yr[h_mask], t_vals[h_mask], color='#5A84E2', linewidth=2.5)
 
     obs_mask = (gmst['year'] >= year_start) & (gmst['year'] <= min(2025, year_end))
     ax.plot(gmst.loc[obs_mask, 'year'], gmst.loc[obs_mask, 'gmst'],
-            color='white', linewidth=1.5, linestyle='-', label='Havaittu')
+            color='white', linewidth=1.5, label='Havaittu')
 
     ax.axhline(PARIS_15, color='#65C06C', linewidth=1.5, linestyle='--')
     ax.axhline(PARIS_20, color='#FFA73E', linewidth=1.5, linestyle='--')
@@ -138,42 +157,55 @@ def _make_temperature_plot(temp_da, year_start, year_end,
 
     if highlight_year is not None:
         ax.axvline(highlight_year, color='white', linewidth=1.2, linestyle=':')
-        # Show year label only when not annotating peak (peak annotation already shows year)
         if not show_peak:
-            ax.text(highlight_year + 1, ax.get_ylim()[0] + 0.05,
-                    str(highlight_year), color='white', fontsize=9)
-
-    if show_peak:
-        peak_temp = float(t_vals.max())
-        peak_yr   = int(yr[t_vals.argmax()])
-        ax.annotate(
-            f'Huippu: {peak_temp:.2f} °C ({peak_yr})',
-            xy=(peak_yr, peak_temp),
-            xytext=(peak_yr + 5, peak_temp + 0.1),
-            color='white', fontsize=10,
-            arrowprops=dict(arrowstyle='->', color='white', lw=1.5),
-        )
-
-    if inset_metrics:
-        lines = '\n'.join(f'{label}:  {val}' for label, val in inset_metrics)
-        ax.text(0.02, 0.02, lines,
-                transform=ax.transAxes,
-                color='white', fontsize=10, va='bottom', ha='left',
-                bbox=dict(facecolor='#1e2130', edgecolor='#555555',
-                          boxstyle='round,pad=0.5', alpha=0.9))
+            ax.text(highlight_year + 1, y_min + 0.05, str(highlight_year),
+                    color='white', fontsize=9)
 
     ax.set_xlabel('Vuosi', color='white')
     ax.set_ylabel('Lämpötila-anomalia (°C)', color='white')
     ax.tick_params(colors='white')
     for spine in ax.spines.values():
         spine.set_edgecolor('#444444')
+
+    # Animated future line (empty at start)
+    model_line, = ax.plot([], [], color='#5A84E2', linewidth=2.5, label='Ilmastomalli')
     ax.legend(facecolor='#1e2130', labelcolor='white', fontsize=9)
-    fig.tight_layout()
-    return fig
+
+    n_frames = len(yr_fut)
+
+    def update(frame):
+        model_line.set_data(yr_fut[:frame + 1], t_fut[:frame + 1])
+        # On the final frame, add annotations that summarise the result
+        if frame == n_frames - 1:
+            if show_peak:
+                peak_temp = float(t_vals.max())
+                peak_yr   = int(yr[t_vals.argmax()])
+                ax.annotate(
+                    f'Huippu: {peak_temp:.2f} °C ({peak_yr})',
+                    xy=(peak_yr, peak_temp),
+                    xytext=(peak_yr + 5, peak_temp + 0.1),
+                    color='white', fontsize=10,
+                    arrowprops=dict(arrowstyle='->', color='white', lw=1.5),
+                )
+            if inset_metrics:
+                lines = '\n'.join(f'{label}:  {val}' for label, val in inset_metrics)
+                ax.text(0.02, 0.02, lines,
+                        transform=ax.transAxes,
+                        color='white', fontsize=10, va='bottom', ha='left',
+                        bbox=dict(facecolor='#1e2130', edgecolor='#555555',
+                                  boxstyle='round,pad=0.5', alpha=0.9))
+
+    anim = mpl_anim.FuncAnimation(
+        fig, update, frames=n_frames,
+        interval=ANIM_INTERVAL, blit=False, repeat=False,
+    )
+    html = anim.to_jshtml()
+    plt.close(fig)
+    return html
 
 
 def _emissions_bar_chart(cuts):
-    """Bar chart: 2023 baseline vs. pledged 2040 emissions per region."""
+    """Bar chart: 2023 baseline vs. pledged CHECKPOINT emissions per region."""
     regions = list(REGION_EMISSIONS_2023_GTCO2.keys())
     base    = [REGION_EMISSIONS_2023_GTCO2[r] for r in regions]
     target  = [REGION_EMISSIONS_2023_GTCO2[r] * (1 - cuts[r]) for r in regions]
@@ -186,7 +218,7 @@ def _emissions_bar_chart(cuts):
     x     = np.arange(len(regions))
     width = 0.38
     ax.bar(x - width / 2, base,   width, color=colors, alpha=0.45, label='Päästöt 2023')
-    ax.bar(x + width / 2, target, width, color=colors, alpha=0.90, label='Päästöt 2040 (lupaus)')
+    ax.bar(x + width / 2, target, width, color=colors, alpha=0.90, label=f'Päästöt {CHECKPOINT} (lupaus)')
 
     ax.set_xticks(x)
     ax.set_xticklabels([_plain_name(r) for r in regions], color='white', fontsize=9)
@@ -210,15 +242,15 @@ def _emissions_pathway_chart(cuts, netzero_years):
     for r, base in REGION_EMISSIONS_2023_GTCO2.items():
         cut    = cuts.get(r, 0.0)
         em2023 = base
-        em2040 = base * (1 - cut)
+        em_chk = base * (1 - cut)
         nz     = netzero_years.get(r, 2070)
 
         em = np.zeros(len(years))
         for i, y in enumerate(years):
-            if y < 2040:
-                em[i] = em2023 + (em2040 - em2023) * (y - 2023) / 17
+            if y < CHECKPOINT:
+                em[i] = em2023 + (em_chk - em2023) * (y - 2023) / (CHECKPOINT - 2023)
             elif y < nz:
-                em[i] = em2040 * (1 - (y - 2040) / (nz - 2040))
+                em[i] = em_chk * (1 - (y - CHECKPOINT) / (nz - CHECKPOINT))
             else:
                 em[i] = 0.0
         region_em[r] = em
@@ -233,7 +265,7 @@ def _emissions_pathway_chart(cuts, netzero_years):
                         color=REGION_COLORS[r], alpha=0.75, label=_plain_name(r))
         stack_bottom += region_em[r]
 
-    ax.axvline(2040, color='white', linewidth=1, linestyle=':')
+    ax.axvline(CHECKPOINT, color='white', linewidth=1, linestyle=':')
     ax.set_ylabel('GtCO₂/vuosi', color='white')
     ax.set_xlabel('Vuosi', color='white')
     ax.set_xlim(2023, plot_end)
@@ -251,7 +283,7 @@ def _phase1():
     st.title('🌍 Ilmastoneuvottelut — Mitä lupaatte?')
     st.markdown(
         'Jokainen ryhmä edustaa yhtä maailman suurta päästöaluetta. '
-        'Sopikaa, kuinka paljon leikkaatte **CO₂-päästöjä** vuoteen **2040** mennessä.'
+        f'Sopikaa, kuinka paljon leikkaatte **CO₂-päästöjä** vuoteen **{CHECKPOINT}** mennessä.'
     )
 
     _nav_bar()
@@ -270,17 +302,17 @@ def _phase1():
                 key=f'slider_p1_{region}',
             )
             cuts[region] = pct / 100.0
-            em_2040 = base_em * (1 - cuts[region])
+            em_chk = base_em * (1 - cuts[region])
             st.caption(
                 f'2023: **{base_em:.1f}** GtCO₂/v  \n'
-                f'2040: **{em_2040:.1f}** GtCO₂/v'
+                f'{CHECKPOINT}: **{em_chk:.1f}** GtCO₂/v'
             )
     st.session_state['cuts'] = cuts
 
-    total_2040    = sum(REGION_EMISSIONS_2023_GTCO2[r] * (1 - cuts[r]) for r in cuts)
-    total_cut_pct = (1 - total_2040 / TOTAL_2023) * 100
+    total_chk     = sum(REGION_EMISSIONS_2023_GTCO2[r] * (1 - cuts[r]) for r in cuts)
+    total_cut_pct = (1 - total_chk / TOTAL_2023) * 100
     st.info(
-        f'**Yhteensä 2040:** {total_2040:.1f} GtCO₂/vuosi  '
+        f'**Yhteensä {CHECKPOINT}:** {total_chk:.1f} GtCO₂/vuosi  '
         f'({total_cut_pct:.0f} % leikkaus vuoden 2023 tasosta)'
     )
     st.pyplot(_emissions_bar_chart(cuts))
@@ -303,26 +335,29 @@ def _phase1():
 
     if st.session_state['temp_phase1'] is not None:
         temp   = st.session_state['temp_phase1']
-        t_2040 = float(temp.sel(timebounds=2040))
-        t_now  = float(temp.sel(timebounds=2024))
+        t_chk = float(temp.sel(timebounds=CHECKPOINT))
+        t_now = float(temp.sel(timebounds=2024))
 
         _ecs_banner()
         st.subheader('📊 Simulaatiotulokset')
-        st.pyplot(_make_temperature_plot(
-            temp, year_start=1900, year_end=2060,
-            highlight_year=2040,
-            inset_metrics=[
-                ('Malli: lämpötila nyt (2024)', f'+{t_now:.2f} °C'),
-                ('Malli: keskilämpötila 2040',  f'+{t_2040:.2f} °C'),
-            ],
-        ))
+        components.html(
+            _make_temperature_animation(
+                temp, year_start=1900, year_end=CHECKPOINT + 20,
+                highlight_year=CHECKPOINT,
+                inset_metrics=[
+                    ('Malli: lämpötila nyt (2024)',        f'+{t_now:.2f} °C'),
+                    (f'Malli: keskilämpötila {CHECKPOINT}', f'+{t_chk:.2f} °C'),
+                ],
+            ),
+            height=520,
+        )
 
-        if t_2040 < PARIS_15:
-            st.success('✅ Alle 1,5 °C:n tavoitteen!')
-        elif t_2040 < PARIS_20:
-            st.warning('⚠️ Alle 2 °C:n rajan, mutta yli 1,5 °C')
+        if t_chk < PARIS_15:
+            st.success(f'✅ Alle 1,5 °C:n tavoitteen vuonna {CHECKPOINT}!')
+        elif t_chk < PARIS_20:
+            st.warning(f'⚠️ Alle 2 °C:n rajan vuonna {CHECKPOINT}, mutta yli 1,5 °C')
         else:
-            st.error('❌ Yli 2 °C:n Pariisin rajan')
+            st.error(f'❌ Yli 2 °C:n Pariisin rajan vuonna {CHECKPOINT}')
 
 
 def _phase2():
@@ -344,14 +379,14 @@ def _phase2():
         with col:
             nz = st.slider(
                 region,
-                min_value=2040, max_value=2100,
+                min_value=CHECKPOINT, max_value=2100,
                 value=netzero_years[region],
                 step=5,
                 key=f'slider_nz_{region}',
             )
             netzero_years[region] = nz
-            em_2040 = REGION_EMISSIONS_2023_GTCO2[region] * (1 - cuts.get(region, 0.0))
-            st.caption(f'Nollapäästöt: **{nz}**  \n2040: {em_2040:.1f} GtCO₂/v → 0')
+            em_chk = REGION_EMISSIONS_2023_GTCO2[region] * (1 - cuts.get(region, 0.0))
+            st.caption(f'Nollapäästöt: **{nz}**  \n{CHECKPOINT}: {em_chk:.1f} GtCO₂/v → 0')
     st.session_state['netzero_years'] = netzero_years
 
     st.pyplot(_emissions_pathway_chart(cuts, netzero_years))
@@ -370,20 +405,21 @@ def _phase2():
         temp2 = st.session_state['temp_phase2']
         temp1 = st.session_state['temp_phase1']
 
-        after2040 = temp2.sel(timebounds=temp2.timebounds > 2040)
-        peak_temp = float(after2040.max())
-        peak_yr   = int(after2040.timebounds.values[after2040.values.argmax()])
+        after_chk = temp2.sel(timebounds=temp2.timebounds > CHECKPOINT)
+        peak_temp = float(after_chk.max())
+        peak_yr   = int(after_chk.timebounds.values[after_chk.values.argmax()])
 
         display_end = min(peak_yr + 30, 2150)
 
         st.subheader('📊 Simulaatiotulokset')
-        st.pyplot(
-            _make_temperature_plot(
+        components.html(
+            _make_temperature_animation(
                 temp2, year_start=1900, year_end=display_end,
-                highlight_year=peak_yr,   # vertical line marks temperature peak
+                highlight_year=peak_yr,
                 show_peak=True,
                 phase1_da=temp1,
-            )
+            ),
+            height=520,
         )
 
         if peak_temp < PARIS_15:
