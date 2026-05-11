@@ -5,7 +5,8 @@ Ilmastoneuvottelupeli — FaIR-pohjainen luokkahuonedemosovellus.
 Vaihe 1: Ryhmät sopivat CO2-päästöleikkauksista vuoteen 2040.
 Vaihe 2: Kukin ryhmä sopii omasta nollapäästövuodestaan ja näkee huipputulämpötilan.
 
-Jokainen uusi peli arpoo yhden ilmastomallin 382 hyväksytystä konfiguraatiosta.
+ECS paljastetaan vasta ensimmäisen simulaation jälkeen, jotta se voidaan
+huomioida vaiheen 2 päätöksissä.
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,7 +23,6 @@ TOTAL_2023 = sum(REGION_EMISSIONS_2023_GTCO2.values())
 PARIS_15   = 1.5
 PARIS_20   = 2.0
 
-# Colour palette for regions (CartoColor Safe)
 REGION_COLORS = {
     'Kiina 🇨🇳':      '#E26D91',
     'USA 🇺🇸':         '#5A84E2',
@@ -30,6 +30,11 @@ REGION_COLORS = {
     'Intia 🇮🇳':       '#FFA73E',
     'Muu maailma 🌍': '#8760C1',
 }
+
+
+def _plain_name(region: str) -> str:
+    """Return the text part of a region name, dropping the trailing flag emoji."""
+    return region.rsplit(' ', 1)[0]
 
 
 @st.cache_data
@@ -49,22 +54,19 @@ def _draw_config(screened_df):
 
 
 def _init_state():
-    screened = _load_screened()
     defaults = {
-        'phase':        1,
-        'cuts':         {r: 0.0 for r in REGION_EMISSIONS_2023_GTCO2},
+        'phase':         1,
+        'cuts':          {r: 0.0 for r in REGION_EMISSIONS_2023_GTCO2},
         'netzero_years': {r: 2070 for r in REGION_EMISSIONS_2023_GTCO2},
-        'temp_phase1':  None,
-        'temp_phase2':  None,
+        'temp_phase1':   None,
+        'temp_phase2':   None,
+        # config_id and ecs are None until "Simuloi!" is first clicked
+        'config_id':     None,
+        'ecs':           None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
-    # Draw a config on first visit
-    if 'config_id' not in st.session_state:
-        cfg_id, ecs = _draw_config(screened)
-        st.session_state['config_id'] = cfg_id
-        st.session_state['ecs']        = ecs
 
 
 def _ecs_banner():
@@ -76,14 +78,32 @@ def _ecs_banner():
     )
 
 
+def _nav_bar():
+    """Persistent top navigation between phases. Phase 2 only accessible after Phase 1 sim."""
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.session_state['phase'] != 1:
+            if st.button('⬅ Vaihe 1: Päästövähennykset'):
+                st.session_state['phase'] = 1
+                st.rerun()
+    with col2:
+        if st.session_state['temp_phase1'] is not None and st.session_state['phase'] != 2:
+            if st.button('Vaihe 2: Nollapäästövuodet ➡'):
+                st.session_state['phase'] = 2
+                st.rerun()
+    st.markdown('---')
+
+
 def _make_temperature_plot(temp_da, year_start, year_end,
                             highlight_year=None, show_peak=False,
                             phase1_da=None):
     """
     Draw a single-config temperature trajectory with observed GMST overlay.
 
-    temp_da   : xr.DataArray with dim 'timebounds', single config (no config dim)
-    phase1_da : if given, draw Phase 1 trajectory as a grey dashed prefix up to 2040
+    temp_da      : xr.DataArray dim 'timebounds', single config
+    phase1_da    : if given, draw Phase 1 trajectory as grey dashed line up to 2040
+    highlight_year : draw a dotted vertical line here (Phase 1: 2040; Phase 2: peak year)
+    show_peak    : annotate peak with arrow; suppresses text label on vertical line
     """
     gmst = _load_gmst()
 
@@ -96,7 +116,6 @@ def _make_temperature_plot(temp_da, year_start, year_end,
     yr     = years[mask]
     t_vals = temp_da.isel(timebounds=mask).values
 
-    # Phase 1 trajectory shown as grey dashed prefix in Phase 2
     if phase1_da is not None:
         yr1 = phase1_da.timebounds.values
         m1  = (yr1 >= year_start) & (yr1 <= 2040)
@@ -104,15 +123,12 @@ def _make_temperature_plot(temp_da, year_start, year_end,
                 color='#888888', linewidth=2.5, linestyle='--',
                 label='Vaihe 1')
 
-    ax.plot(yr, t_vals, color='#5A84E2', linewidth=2.5, label='FaIR-malli')
+    ax.plot(yr, t_vals, color='#5A84E2', linewidth=2.5, label='Ilmastomalli')
 
-    # Observed GMST (thin white line) — shows El Niño spike at 2023
     obs_mask = (gmst['year'] >= year_start) & (gmst['year'] <= min(2025, year_end))
     ax.plot(gmst.loc[obs_mask, 'year'], gmst.loc[obs_mask, 'gmst'],
-            color='white', linewidth=1.5, linestyle='-',
-            label='Havaittu (IGCC + WMO)')
+            color='white', linewidth=1.5, linestyle='-', label='Havaittu')
 
-    # Paris Agreement target lines
     ax.axhline(PARIS_15, color='#65C06C', linewidth=1.5, linestyle='--')
     ax.axhline(PARIS_20, color='#FFA73E', linewidth=1.5, linestyle='--')
     ax.text(year_start + 1, PARIS_15 + 0.04, '1,5 °C (Pariisin tavoite)',
@@ -122,8 +138,10 @@ def _make_temperature_plot(temp_da, year_start, year_end,
 
     if highlight_year is not None:
         ax.axvline(highlight_year, color='white', linewidth=1.2, linestyle=':')
-        ax.text(highlight_year + 1, ax.get_ylim()[0] + 0.05,
-                str(highlight_year), color='white', fontsize=9)
+        # Show year label only when not annotating peak (peak annotation already shows year)
+        if not show_peak:
+            ax.text(highlight_year + 1, ax.get_ylim()[0] + 0.05,
+                    str(highlight_year), color='white', fontsize=9)
 
     if show_peak:
         peak_temp = float(t_vals.max())
@@ -163,7 +181,7 @@ def _emissions_bar_chart(cuts):
     ax.bar(x + width / 2, target, width, color=colors, alpha=0.90, label='Päästöt 2040 (lupaus)')
 
     ax.set_xticks(x)
-    ax.set_xticklabels(regions, color='white', fontsize=9)
+    ax.set_xticklabels([_plain_name(r) for r in regions], color='white', fontsize=9)
     ax.set_ylabel('GtCO₂/vuosi', color='white')
     ax.tick_params(colors='white')
     ax.legend(facecolor='#1e2130', labelcolor='white', fontsize=9)
@@ -180,7 +198,6 @@ def _emissions_pathway_chart(cuts, netzero_years):
     years    = np.arange(2023, plot_end + 1)
     regions  = list(REGION_EMISSIONS_2023_GTCO2.keys())
 
-    # Build per-region emission trajectories (GtCO2/yr for display)
     region_em = {}
     for r, base in REGION_EMISSIONS_2023_GTCO2.items():
         cut    = cuts.get(r, 0.0)
@@ -205,7 +222,7 @@ def _emissions_pathway_chart(cuts, netzero_years):
     stack_bottom = np.zeros(len(years))
     for r in regions:
         ax.fill_between(years, stack_bottom, stack_bottom + region_em[r],
-                        color=REGION_COLORS[r], alpha=0.75, label=r)
+                        color=REGION_COLORS[r], alpha=0.75, label=_plain_name(r))
         stack_bottom += region_em[r]
 
     ax.axvline(2040, color='white', linewidth=1, linestyle=':')
@@ -228,7 +245,8 @@ def _phase1():
         'Jokainen ryhmä edustaa yhtä maailman suurta päästöaluetta. '
         'Sopikaa, kuinka paljon leikkaatte **CO₂-päästöjä** vuoteen **2040** mennessä.'
     )
-    _ecs_banner()
+
+    _nav_bar()
 
     cuts = st.session_state['cuts']
 
@@ -251,8 +269,8 @@ def _phase1():
             )
     st.session_state['cuts'] = cuts
 
-    total_2040      = sum(REGION_EMISSIONS_2023_GTCO2[r] * (1 - cuts[r]) for r in cuts)
-    total_cut_pct   = (1 - total_2040 / TOTAL_2023) * 100
+    total_2040    = sum(REGION_EMISSIONS_2023_GTCO2[r] * (1 - cuts[r]) for r in cuts)
+    total_cut_pct = (1 - total_2040 / TOTAL_2023) * 100
     st.info(
         f'**Yhteensä 2040:** {total_2040:.1f} GtCO₂/vuosi  '
         f'({total_cut_pct:.0f} % leikkaus vuoden 2023 tasosta)'
@@ -260,20 +278,27 @@ def _phase1():
     st.pyplot(_emissions_bar_chart(cuts))
 
     if st.button('🔬 Simuloi! →', type='primary'):
+        screened = _load_screened()
+        cfg_id, ecs = _draw_config(screened)
+        st.session_state['config_id'] = cfg_id
+        st.session_state['ecs']       = ecs
+        # Phase 2 result is stale whenever cuts change and Phase 1 reruns
+        st.session_state['temp_phase2'] = None
         with st.spinner('Lasketaan FaIR-simulaatio...'):
             temp = run_fair_game(
                 cuts,
                 netzero_years=None,
-                config_id=st.session_state['config_id'],
+                config_id=cfg_id,
             )
             st.session_state['temp_phase1'] = temp
         st.rerun()
 
     if st.session_state['temp_phase1'] is not None:
-        temp      = st.session_state['temp_phase1']
-        t_2040    = float(temp.sel(timebounds=2040))
-        t_now     = float(temp.sel(timebounds=2024))
+        temp   = st.session_state['temp_phase1']
+        t_2040 = float(temp.sel(timebounds=2040))
+        t_now  = float(temp.sel(timebounds=2024))
 
+        _ecs_banner()
         st.subheader('📊 Simulaatiotulokset')
         st.pyplot(_make_temperature_plot(temp, year_start=1900, year_end=2060,
                                           highlight_year=2040))
@@ -290,11 +315,6 @@ def _phase1():
             else:
                 st.error('❌ Yli 2 °C:n Pariisin rajan')
 
-        st.markdown('---')
-        if st.button('➡️ Vaihe 2: Päätä nollapäästövuodet', type='primary'):
-            st.session_state['phase'] = 2
-            st.rerun()
-
 
 def _phase2():
     st.title('🎯 Milloin kukin alue saavuttaa nollapäästöt?')
@@ -302,9 +322,11 @@ def _phase2():
         'Jokainen ryhmä päättää, milloin **oma alueensa** CO₂-päästöt laskevat nollaan. '
         'Metaani ja muut kasvihuonekaasut seuraavat nykyistä kehitystä (SSP2-4.5).'
     )
+
+    _nav_bar()
     _ecs_banner()
 
-    cuts         = st.session_state['cuts']
+    cuts          = st.session_state['cuts']
     netzero_years = st.session_state['netzero_years']
 
     st.subheader('Valitse nollapäästövuosi alueittain')
@@ -339,19 +361,17 @@ def _phase2():
         temp2 = st.session_state['temp_phase2']
         temp1 = st.session_state['temp_phase1']
 
-        # Peak temperature: maximum of model trajectory after 2040
-        after2040   = temp2.sel(timebounds=temp2.timebounds > 2040)
-        peak_temp   = float(after2040.max())
-        peak_yr     = int(after2040.timebounds.values[after2040.values.argmax()])
+        after2040 = temp2.sel(timebounds=temp2.timebounds > 2040)
+        peak_temp = float(after2040.max())
+        peak_yr   = int(after2040.timebounds.values[after2040.values.argmax()])
 
         display_end = min(peak_yr + 30, 2150)
-        latest_nz   = max(netzero_years.values())
 
         st.subheader('📊 Simulaatiotulokset')
         st.pyplot(
             _make_temperature_plot(
                 temp2, year_start=1900, year_end=display_end,
-                highlight_year=latest_nz,
+                highlight_year=peak_yr,   # vertical line marks temperature peak
                 show_peak=True,
                 phase1_da=temp1,
             )
@@ -369,21 +389,10 @@ def _phase2():
                 st.error('❌ Ylitetään 2 °C:n Pariisin raja')
 
     st.markdown('---')
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button('⬅️ Takaisin vaiheeseen 1'):
-            st.session_state['phase'] = 1
-            st.session_state['temp_phase2'] = None
-            st.rerun()
-    with col2:
-        if st.button('🔄 Aloita alusta (uusi ilmastomalli)'):
-            screened = _load_screened()
-            cfg_id, ecs = _draw_config(screened)
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.session_state['config_id'] = cfg_id
-            st.session_state['ecs']        = ecs
-            st.rerun()
+    if st.button('🔄 Aloita alusta (uusi ilmastomalli)'):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
 
 
 def main():
