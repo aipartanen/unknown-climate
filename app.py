@@ -96,7 +96,7 @@ def _nav_bar():
 
 def _make_temperature_plot(temp_da, year_start, year_end,
                             highlight_year=None, show_peak=False,
-                            phase1_da=None):
+                            phase1_da=None, inset_metrics=None):
     """
     Draw a single-config temperature trajectory with observed GMST overlay.
 
@@ -153,6 +153,14 @@ def _make_temperature_plot(temp_da, year_start, year_end,
             color='white', fontsize=10,
             arrowprops=dict(arrowstyle='->', color='white', lw=1.5),
         )
+
+    if inset_metrics:
+        lines = '\n'.join(f'{label}:  {val}' for label, val in inset_metrics)
+        ax.text(0.02, 0.02, lines,
+                transform=ax.transAxes,
+                color='white', fontsize=10, va='bottom', ha='left',
+                bbox=dict(facecolor='#1e2130', edgecolor='#555555',
+                          boxstyle='round,pad=0.5', alpha=0.9))
 
     ax.set_xlabel('Vuosi', color='white')
     ax.set_ylabel('Lämpötila-anomalia (°C)', color='white')
@@ -300,20 +308,21 @@ def _phase1():
 
         _ecs_banner()
         st.subheader('📊 Simulaatiotulokset')
-        st.pyplot(_make_temperature_plot(temp, year_start=1900, year_end=2060,
-                                          highlight_year=2040))
+        st.pyplot(_make_temperature_plot(
+            temp, year_start=1900, year_end=2060,
+            highlight_year=2040,
+            inset_metrics=[
+                ('Malli: lämpötila nyt (2024)', f'+{t_now:.2f} °C'),
+                ('Malli: keskilämpötila 2040',  f'+{t_2040:.2f} °C'),
+            ],
+        ))
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.metric('Malli: lämpötila nyt (2024)', f'+{t_now:.2f} °C')
-            st.metric('Malli: keskilämpötila 2040',  f'+{t_2040:.2f} °C')
-        with col_b:
-            if t_2040 < PARIS_15:
-                st.success('✅ Alle 1,5 °C:n tavoitteen!')
-            elif t_2040 < PARIS_20:
-                st.warning('⚠️ Alle 2 °C:n rajan, mutta yli 1,5 °C')
-            else:
-                st.error('❌ Yli 2 °C:n Pariisin rajan')
+        if t_2040 < PARIS_15:
+            st.success('✅ Alle 1,5 °C:n tavoitteen!')
+        elif t_2040 < PARIS_20:
+            st.warning('⚠️ Alle 2 °C:n rajan, mutta yli 1,5 °C')
+        else:
+            st.error('❌ Yli 2 °C:n Pariisin rajan')
 
 
 def _phase2():
@@ -377,16 +386,12 @@ def _phase2():
             )
         )
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.metric('Huipputulämpötila', f'+{peak_temp:.2f} °C ({peak_yr})')
-        with col_b:
-            if peak_temp < PARIS_15:
-                st.success('✅ Pysytään 1,5 °C:n tavoitteessa!')
-            elif peak_temp < PARIS_20:
-                st.warning('⚠️ Alle 2 °C, mutta yli 1,5 °C')
-            else:
-                st.error('❌ Ylitetään 2 °C:n Pariisin raja')
+        if peak_temp < PARIS_15:
+            st.success('✅ Pysytään 1,5 °C:n tavoitteessa!')
+        elif peak_temp < PARIS_20:
+            st.warning('⚠️ Alle 2 °C, mutta yli 1,5 °C')
+        else:
+            st.error('❌ Ylitetään 2 °C:n Pariisin raja')
 
     st.markdown('---')
     if st.button('🔄 Aloita alusta (uusi ilmastomalli)'):

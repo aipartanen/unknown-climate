@@ -7,3 +7,6 @@ data/screened_configs.csv
 # Python
 __pycache__/
 *.py[cod]
+
+# Other files
+*.pptx
