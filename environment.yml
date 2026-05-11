@@ -1,0 +1,13 @@
+name: climate-game
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - fair=2.2.0
+  - numpy
+  - pandas
+  - xarray
+  - netcdf4
+  - matplotlib
+  - streamlit
+  - python-dotenv
