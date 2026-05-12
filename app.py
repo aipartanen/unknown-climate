@@ -34,50 +34,56 @@ CHECKPOINT      = 2040   # Phase 1 pledge year
 ANIM_START      = 2026   # year from which temperature trajectory is animated
 ANIM_INTERVAL   = 80     # ms per animation frame (increase to slow down)
 
-# Emission reduction options per region (3 discrete choices).
+# Emission reduction options per region (4 discrete choices, ordered least to most ambitious).
 # Based on emission_reduction_options.md.
 # Each entry: (Finnish label, cut_fraction) where cut_fraction > 0 = reduction,
-# < 0 = emissions increase (India Varovainen).
+# < 0 = emissions increase (Passiivinen / Varovainen for some regions).
 EMISSION_OPTIONS = {
     'Kiina 🇨🇳': [
+        ('Passiivinen (+15 %)',   -0.15),   # SSP3-7.0 / SSP5-8.5 BAU growth
         ('Varovainen (−10 %)',    0.10),
         ('Vahva (−40 %)',         0.40),
         ('Maksimaalinen (−65 %)', 0.65),
     ],
     'USA 🇺🇸': [
+        ('Passiivinen (0 %)',      0.00),   # No additional policy beyond baseline
         ('Varovainen (−20 %)',    0.20),
         ('Vahva (−55 %)',         0.55),
         ('Maksimaalinen (−80 %)', 0.80),
     ],
     'EU 🇪🇺': [
+        ('Passiivinen (−20 %)',   0.20),   # Below current NDC, minimal action
         ('Varovainen (−55 %)',    0.55),
         ('Vahva (−75 %)',         0.75),
         ('Maksimaalinen (−90 %)', 0.90),
     ],
     'Intia 🇮🇳': [
+        ('Passiivinen (+80 %)',  -0.80),   # Strong BAU growth, SSP5-like
         ('Varovainen (+35 %)',   -0.35),   # NDC intensity target → absolute rise
         ('Vahva (−20 %)',         0.20),
         ('Maksimaalinen (−50 %)', 0.50),
     ],
     'Muu maailma 🌍': [
+        ('Passiivinen (+20 %)',  -0.20),   # Developing-world BAU growth
         ('Varovainen (−15 %)',    0.15),
         ('Vahva (−35 %)',         0.35),
         ('Maksimaalinen (−60 %)', 0.60),
     ],
 }
 
-# Maximum post-CHECKPOINT decarbonisation rate: 10 % of each region's 2023 baseline
+# Maximum post-CHECKPOINT decarbonisation rate: 3 % of each region's 2023 baseline
 # per year (in absolute GtCO2 terms, not fraction of remaining stock).
 # Basis: AR6 WGIII 1.5 °C pathways; fastest observed national transitions.
 # Sets a physically plausible floor on the net-zero year given Phase 1 ambition.
-MAX_DECARB_RATE_PER_YEAR = 0.05
+MAX_DECARB_RATE_PER_YEAR = 0.03
 
 # Net-zero timing options for Phase 2 (offsets in years from the per-region minimum).
 # Minimum = CHECKPOINT + ceil(em_remaining / MAX_DECARB_RATE_PER_YEAR).
 NETZERO_OFFSETS = [
-    ('Nopein mahdollinen',   0),
-    ('Maltillinen (+25 v)', 25),
-    ('Hidas (+75 v)',       75),
+    ('Nopein mahdollinen',     0),
+    ('Maltillinen (+25 v)',   25),
+    ('Hidas (+75 v)',         75),
+    ('Ei sitouduta (+150 v)', 150),  # net-zero year well past 2100; emissions stay high throughout simulation
 ]
 
 # (temp °C, color, label shown right of y-axis)
