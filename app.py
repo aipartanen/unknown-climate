@@ -224,7 +224,7 @@ def _init_state():
         # Default Phase 2: Maltillinen (index 1) for all regions
         'netzero_indices': {r: 1 for r in REGION_EMISSIONS_2023_GTCO2},
         'netzero_years':   {
-            r: min(_min_netzero_year(_default_cuts[r]) + NETZERO_OFFSETS[1][1], 2150)
+            r: _min_netzero_year(_default_cuts[r]) + NETZERO_OFFSETS[1][1]
             for r in REGION_EMISSIONS_2023_GTCO2
         },
         'temp_phase1':     None,
@@ -578,14 +578,15 @@ def _nz_input(region: str, min_nz: int, netzero_indices: dict) -> int:
     """
     if USE_SLIDERS:
         current = netzero_indices.get(region, 1)
-        nz_opts = [(lbl, min(min_nz + off, 2150)) for lbl, off in NETZERO_OFFSETS]
+        nz_opts = [(lbl, min_nz + off) for lbl, off in NETZERO_OFFSETS]
         default_yr = nz_opts[current][1]
+        max_nz = max(yr for _, yr in nz_opts)
         return st.slider(
-            region, min_value=min_nz, max_value=2150,
+            region, min_value=min_nz, max_value=max_nz,
             value=max(default_yr, min_nz), step=5,
             key=f'slider_nz_{region}',
         )
-    nz_opts = [(lbl, min(min_nz + off, 2150)) for lbl, off in NETZERO_OFFSETS]
+    nz_opts = [(lbl, min_nz + off) for lbl, off in NETZERO_OFFSETS]
     idx = st.radio(
         region,
         options=range(len(nz_opts)),
@@ -643,7 +644,7 @@ def _phase1():
         # Reset Phase 2 net-zero choices to Maltillinen (index 1) based on new Phase 1 cuts
         st.session_state['netzero_indices'] = {r: 1 for r in REGION_EMISSIONS_2023_GTCO2}
         st.session_state['netzero_years'] = {
-            r: min(_min_netzero_year(cuts[r]) + NETZERO_OFFSETS[1][1], 2150)
+            r: _min_netzero_year(cuts[r]) + NETZERO_OFFSETS[1][1]
             for r in REGION_EMISSIONS_2023_GTCO2
         }
         with st.spinner('Lasketaan FaIR-simulaatio...'):

@@ -194,8 +194,7 @@ def _setup_fair(config_id: int, df_configs_row: pd.DataFrame,
     fill(f.climate_configs['sigma_eta'],             df_configs_row['clim_sigma_eta'].values.squeeze())
     fill(f.climate_configs['sigma_xi'],              df_configs_row['clim_sigma_xi'].values.squeeze())
     fill(f.climate_configs['seed'],                  df_configs_row['seed'])
-    # Deterministic run: stochastic noise disabled for a clean classroom trajectory
-    fill(f.climate_configs['stochastic_run'],        False)
+    fill(f.climate_configs['stochastic_run'],        True)
     fill(f.climate_configs['use_seed'],              True)
     fill(f.climate_configs['forcing_4co2'],          df_configs_row['clim_F_4xCO2'])
 
