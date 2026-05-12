@@ -11,6 +11,7 @@ huomioida vaiheen 2 päätöksissä.
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as mpl_anim
+from matplotlib.transforms import blended_transform_factory
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -28,12 +29,97 @@ CHECKPOINT      = 2040   # Phase 1 pledge year
 ANIM_START      = 2026   # year from which temperature trajectory is animated
 ANIM_INTERVAL   = 80     # ms per animation frame (increase to slow down)
 
+# (temp °C, color, label shown right of y-axis)
+# Two lines separated by \n; Finland-specific impacts marked with "(FI)"
+TEMP_ANNOTATIONS = [
+    (1.5, '#65C06C', '70–90 % koralleista häviää'),
+    (2.0, '#FFA73E', 'korallit katoavat\nItämeri ei enää jäädy (FI)'),
+    (3.0, '#E2824A', 'Arktis jäätön useimpina kesinä\nLapin porotalous uhattuna (FI)'),
+    (4.0, '#E24444', 'helleaallot 9,4×\netelä-Suomi käytännössä lumeton (FI)'),
+]
+
 REGION_COLORS = {
     'Kiina 🇨🇳':      '#E26D91',
     'USA 🇺🇸':         '#5A84E2',
     'EU 🇪🇺':          '#65C06C',
     'Intia 🇮🇳':       '#FFA73E',
     'Muu maailma 🌍': '#8760C1',
+}
+
+# Impact data at four warming levels (vs. 1850–1900 pre-industrial baseline).
+# Each entry: (icon, label, value_string, severity_0_to_100)
+# Global figures from IPCC AR6 WG1 (2021) and SR1.5 (2018).
+# Finland figures from Finnish Meteorological Institute projections
+# (Finland warms ~1.5–2× the global average due to Arctic amplification).
+IMPACTS = {
+    1.5: {
+        'color': '#65C06C',
+        'global': [
+            ('🌊', 'Merenpinnannousu (2100)',         '~40 cm',                             25),
+            ('🪸', 'Koralliriutat',                   '70–90 % häviää',                     35),
+            ('🧊', 'Arktis: jäätön kesä',             'kerran sadassa vuodessa',             15),
+            ('🦋', 'Lajien elinympäristö puolittuu',  '~6 % hyönteisistä',                  20),
+            ('☀️', 'Äärimmäiset helleaallot',         '4× yleisempiä kuin 1800-luvulla',    20),
+        ],
+        'finland': [
+            ('🌡️', 'Lämpötilan nousu Suomessa',       '+2–3 °C',                            25),
+            ('🏙️', 'Helsinki talvella',               'kuin Tukholma tänään',               25),
+            ('❄️', 'Lumiset talvet Etelä-Suomessa',  'harvinaisempia',                      25),
+            ('⛷️', 'Hiihtosesonki etelässä',          'lyhenee 2–3 viikkoa',                20),
+            ('🦌', 'Porotalous Lapissa',              'jäätymisriski kasvaa',                20),
+        ],
+    },
+    2.0: {
+        'color': '#FFA73E',
+        'global': [
+            ('🌊', 'Merenpinnannousu (2100)',         '~50 cm',                              45),
+            ('🪸', 'Koralliriutat',                   '>99 % häviää — käytännössä kaikki',  75),
+            ('🧊', 'Arktis: jäätön kesä',             'kerran kymmenessä vuodessa',          40),
+            ('🦋', 'Lajien elinympäristö puolittuu',  '~18 % hyönteisistä',                 45),
+            ('☀️', 'Äärimmäiset helleaallot',         '5,6× yleisempiä',                    45),
+        ],
+        'finland': [
+            ('🌡️', 'Lämpötilan nousu Suomessa',       '+3–4 °C',                            45),
+            ('🏙️', 'Helsinki talvella',               'kuin Varsova tänään',                45),
+            ('❄️', 'Lumiset talvet Etelä-Suomessa',  'epäluotettavia',                      50),
+            ('⛷️', 'Hiihtosesonki etelässä',          'lyhenee 1–2 kuukautta',              50),
+            ('🦌', 'Porotalous Lapissa',              'merkittävä uhka',                     45),
+        ],
+    },
+    3.0: {
+        'color': '#E2824A',
+        'global': [
+            ('🌊', 'Merenpinnannousu (2100)',         '~80 cm',                              65),
+            ('🪸', 'Koralliriutat',                   'käytännössä hävinneet',               90),
+            ('🧊', 'Arktis: jäätön kesä',             'useimpina vuosina',                   70),
+            ('🦋', 'Lajien elinympäristö puolittuu',  '~49 % hyönteisistä',                 70),
+            ('☀️', 'Äärimmäiset helleaallot',         '~8× yleisempiä',                     70),
+        ],
+        'finland': [
+            ('🌡️', 'Lämpötilan nousu Suomessa',       '+4,5–6 °C',                          65),
+            ('🏙️', 'Helsinki talvella',               'kuin Praha tänään',                  65),
+            ('❄️', 'Lumiset talvet Etelä-Suomessa',  'hyvin harvinaisia',                   75),
+            ('⛷️', 'Hiihtosesonki etelässä',          'siirtynyt pohjoiseen',               75),
+            ('🦌', 'Porotalous Lapissa',              'vakavasti uhattuna',                   75),
+        ],
+    },
+    4.0: {
+        'color': '#E24444',
+        'global': [
+            ('🌊', 'Merenpinnannousu (2100)',         '~100 cm+',                            85),
+            ('🪸', 'Koralliriutat',                   'hävinneet',                          100),
+            ('🧊', 'Arktis: jäätön kesä',             'joka vuosi',                          95),
+            ('🦋', 'Lajien elinympäristö puolittuu',  '>35 % lajeista',                     85),
+            ('☀️', 'Äärimmäiset helleaallot',         '9,4× yleisempiä',                    90),
+        ],
+        'finland': [
+            ('🌡️', 'Lämpötilan nousu Suomessa',       '+6–8 °C',                            85),
+            ('🏙️', 'Helsinki talvella',               'kuin Wien tänään',                   85),
+            ('❄️', 'Lumiset talvet Etelä-Suomessa',  'kadonnut muisto',                     95),
+            ('⛷️', 'Hiihtosesonki etelässä',          'ei enää taloudellisesti kannattavaa', 90),
+            ('🦌', 'Porotalous Lapissa',              'romahtamassa',                        90),
+        ],
+    },
 }
 
 
@@ -83,9 +169,90 @@ def _ecs_banner():
     )
 
 
+def _impacts_page():
+    st.title('🌡️ Mitä lämpeneminen tarkoittaa?')
+    st.markdown(
+        'Valitse lämpenemistaso nähdäksesi vaikutukset maailmalla ja Suomessa.  \n'
+        '*(Verrattuna esiteolliseen aikaan 1850–1900)*'
+    )
+    _nav_bar()
+
+    selected = st.radio(
+        '',
+        options=[1.5, 2.0, 3.0, 4.0],
+        format_func=lambda x: f'+{x} °C',
+        horizontal=True,
+        key='impacts_temp',
+        label_visibility='collapsed',
+    )
+
+    data   = IMPACTS[selected]
+    color  = data['color']
+
+    # Large temperature badge
+    st.markdown(
+        f'<div style="text-align:center;padding:16px 0 24px 0">'
+        f'<span style="font-size:3.5em;font-weight:900;color:{color}">'
+        f'+{selected} °C</span></div>',
+        unsafe_allow_html=True,
+    )
+
+    def _bar(pct):
+        return (
+            f'<div style="background:#2a2a3a;border-radius:4px;height:8px;margin:4px 0 14px 0">'
+            f'<div style="background:{color};width:{pct}%;height:8px;border-radius:4px"></div>'
+            f'</div>'
+        )
+
+    col_global, col_finland = st.columns(2)
+
+    with col_global:
+        st.subheader('🌍 Maailmanlaajuisesti')
+        for icon, label, value, sev in data['global']:
+            st.markdown(f'**{icon} {label}**')
+            st.markdown(
+                f'<span style="color:{color};font-size:1.05em">{value}</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(_bar(sev), unsafe_allow_html=True)
+
+    with col_finland:
+        st.subheader('🇫🇮 Suomessa')
+        for icon, label, value, sev in data['finland']:
+            st.markdown(f'**{icon} {label}**')
+            st.markdown(
+                f'<span style="color:{color};font-size:1.05em">{value}</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(_bar(sev), unsafe_allow_html=True)
+
+    # Cross-reference with Phase 1 simulation result if available
+    if st.session_state.get('temp_phase1') is not None:
+        temp  = st.session_state['temp_phase1']
+        t_chk = float(temp.sel(timebounds=CHECKPOINT))
+        closest = min(IMPACTS.keys(), key=lambda x: abs(x - t_chk))
+        st.markdown('---')
+        st.info(
+            f'📊 **Teidän simulaationne:** lämpötila {CHECKPOINT} → **+{t_chk:.2f} °C**  \n'
+            f'Tämä on lähimpänä **+{closest} °C** tasoa yllä olevassa vertailussa.'
+        )
+
+    st.markdown(
+        '<p style="color:#4A5568;font-size:0.8em;margin-top:24px">'
+        'Lähteet: IPCC AR6 WG1 (2021), SR1.5 (2018) · '
+        'Suomen luvut: Ilmatieteen laitos</p>',
+        unsafe_allow_html=True,
+    )
+
+
 def _nav_bar():
-    """Persistent top navigation between phases. Phase 2 only accessible after Phase 1 sim."""
-    col1, col2 = st.columns([1, 1])
+    """Persistent top navigation. Phase 2 only accessible after Phase 1 sim."""
+    col0, col1, col2 = st.columns([1, 1, 1])
+    with col0:
+        if st.session_state['phase'] != 0:
+            if st.button('🌡️ Vaikutukset'):
+                st.session_state['phase'] = 0
+                st.rerun()
     with col1:
         if st.session_state['phase'] != 1:
             if st.button('⬅ Vaihe 1: Päästövähennykset'):
@@ -154,6 +321,22 @@ def _make_temperature_animation(temp_da, year_start, year_end,
             color='#65C06C', fontsize=9)
     ax.text(year_start + 1, PARIS_20 + 0.04, '2,0 °C (Pariisin raja)',
             color='#FFA73E', fontsize=9)
+
+    # Right-side impact annotations: one label per warming threshold.
+    # Uses a blended transform so x is in axes fraction (outside right edge)
+    # and y is in data coordinates (matches the temperature scale).
+    fig.subplots_adjust(right=0.72)
+    _rtrans = blended_transform_factory(ax.transAxes, ax.transData)
+    for t_ann, col_ann, lbl_ann in TEMP_ANNOTATIONS:
+        if t_ann > y_max + 0.15:
+            continue                          # off the top of the chart
+        if t_ann > PARIS_20:                  # 1.5 and 2.0 already have axhlines above
+            ax.axhline(t_ann, color=col_ann, linewidth=1.0,
+                       linestyle='--', alpha=0.50)
+        ax.text(1.03, t_ann, lbl_ann,
+                transform=_rtrans,
+                color=col_ann, fontsize=7, va='center',
+                linespacing=1.55, clip_on=False)
 
     if highlight_year is not None:
         ax.axvline(highlight_year, color='white', linewidth=1.2, linestyle=':')
@@ -444,7 +627,9 @@ def main():
     )
     _init_state()
 
-    if st.session_state['phase'] == 1:
+    if st.session_state['phase'] == 0:
+        _impacts_page()
+    elif st.session_state['phase'] == 1:
         _phase1()
     else:
         _phase2()
