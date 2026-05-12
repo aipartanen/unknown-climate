@@ -70,14 +70,14 @@ EMISSION_OPTIONS = {
 # per year (in absolute GtCO2 terms, not fraction of remaining stock).
 # Basis: AR6 WGIII 1.5 °C pathways; fastest observed national transitions.
 # Sets a physically plausible floor on the net-zero year given Phase 1 ambition.
-MAX_DECARB_RATE_PER_YEAR = 0.07
+MAX_DECARB_RATE_PER_YEAR = 0.05
 
 # Net-zero timing options for Phase 2 (offsets in years from the per-region minimum).
 # Minimum = CHECKPOINT + ceil(em_remaining / MAX_DECARB_RATE_PER_YEAR).
 NETZERO_OFFSETS = [
     ('Nopein mahdollinen',   0),
     ('Maltillinen (+25 v)', 25),
-    ('Hidas (+50 v)',       50),
+    ('Hidas (+75 v)',       75),
 ]
 
 # (temp °C, color, label shown right of y-axis)
