@@ -132,10 +132,11 @@ def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end
 
 def _setup_fair(config_id: int, df_configs_row: pd.DataFrame,
                 df_methane: pd.DataFrame, df_landuse: pd.DataFrame,
-                df_lapsi: pd.DataFrame, year_end: int) -> FAIR:
+                df_lapsi: pd.DataFrame, year_end: int,
+                base_ssp: str = 'ssp245') -> FAIR:
     """
     Configure a single-config, deterministic FaIR instance.
-    Emissions are filled with SSP2-4.5 base; CO2 FFI is overwritten by caller.
+    Emissions are filled from base_ssp; CO2 FFI may be overwritten by caller.
     """
     forcing_dir = FAIR_CAL_DIR / 'data' / 'forcing'
     df_solar    = pd.read_csv(forcing_dir / 'solar_erf_timebounds.csv', index_col='year')
@@ -173,7 +174,7 @@ def _setup_fair(config_id: int, df_configs_row: pd.DataFrame,
         / 'emissions' / 'ssps_harmonized_1750-2499.nc'
     )
     da = da_emissions.loc[
-        dict(config='unspecified', scenario=[BASE_SSP], specie=species)
+        dict(config='unspecified', scenario=[base_ssp], specie=species)
     ][:nyears - 1, ...]
     fe = da.expand_dims(dim=['config'], axis=(2))
     f.emissions = fe.drop_vars('config') * np.ones((1, 1, 1, 1))
@@ -326,7 +327,7 @@ def run_fair_game(cuts: dict, netzero_years: dict | None, config_id: int) -> xr.
 
     df_row = df_configs_all.loc[[config_id]]
 
-    f = _setup_fair(config_id, df_row, df_methane, df_landuse, df_lapsi, year_end)
+    f = _setup_fair(config_id, df_row, df_methane, df_landuse, df_lapsi, year_end, base_ssp='ssp245')
 
     # Overwrite CO2 FFI from 2023 onwards with the game trajectory.
     # dims of f.emissions: (timepoints, scenario, config, specie)
@@ -338,6 +339,45 @@ def run_fair_game(cuts: dict, netzero_years: dict | None, config_id: int) -> xr.
 
     # Surface temperature (layer 0), anomaly relative to 1850–1900 pre-industrial mean.
     # 1850–1900 baseline is consistent with IPCC AR6 observed warming reference.
+    temp = f.temperature.sel(layer=0, scenario='game', config=config_id)
+    baseline = temp.sel(timebounds=slice(1850, 1900)).mean(dim='timebounds')
+    return temp - baseline
+
+
+def run_fair_ssp(ssp_name: str, config_id: int, year_end: int = 2100) -> xr.DataArray:
+    """
+    Run a deterministic FaIR simulation using a pre-defined SSP scenario without
+    any custom CO2 override (all emissions taken directly from the SSP NetCDF).
+
+    Parameters
+    ----------
+    ssp_name : str
+        SSP scenario key as it appears in the harmonized emissions file,
+        e.g. 'ssp119', 'ssp245', 'ssp370', 'ssp585'.
+    config_id : int
+        Row index from data/screened_configs.csv / the calibrated posterior.
+    year_end : int
+        Last year of the FaIR run (default 2100).
+
+    Returns
+    -------
+    temp : xr.DataArray
+        Surface temperature anomaly (°C re. 1850–1900 mean), dim (timebounds,).
+    """
+    cal_out = FAIR_CAL_DIR / 'output' / f'fair-{FAIR_V}' / f'v{CAL_V}' / CONSTRAINT_SET
+    df_configs_all = pd.read_csv(
+        cal_out / 'posteriors' / 'calibrated_constrained_parameters.csv', index_col=0
+    )
+    df_methane = pd.read_csv(cal_out / 'calibrations' / 'CH4_lifetime.csv',       index_col=0)
+    df_landuse = pd.read_csv(cal_out / 'calibrations' / 'landuse_scale_factor.csv', index_col=0)
+    df_lapsi   = pd.read_csv(cal_out / 'calibrations' / 'lapsi_scale_factor.csv',   index_col=0)
+
+    df_row = df_configs_all.loc[[config_id]]
+
+    f = _setup_fair(config_id, df_row, df_methane, df_landuse, df_lapsi, year_end,
+                    base_ssp=ssp_name)
+    f.run()
+
     temp = f.temperature.sel(layer=0, scenario='game', config=config_id)
     baseline = temp.sel(timebounds=slice(1850, 1900)).mean(dim='timebounds')
     return temp - baseline

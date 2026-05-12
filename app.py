@@ -30,12 +30,12 @@ ANIM_START      = 2026   # year from which temperature trajectory is animated
 ANIM_INTERVAL   = 80     # ms per animation frame (increase to slow down)
 
 # (temp °C, color, label shown right of y-axis)
-# Two lines separated by \n; Finland-specific impacts marked with "(FI)"
+# Two lines separated by 
 TEMP_ANNOTATIONS = [
     (1.5, '#65C06C', '70–90 % koralleista häviää'),
-    (2.0, '#FFA73E', 'korallit katoavat\nItämeri ei enää jäädy (FI)'),
-    (3.0, '#E2824A', 'Arktis jäätön useimpina kesinä\nLapin porotalous uhattuna (FI)'),
-    (4.0, '#E24444', 'helleaallot 9,4×\netelä-Suomi käytännössä lumeton (FI)'),
+    (2.0, '#FFA73E', 'korallit katoavat\nItämeri ei enää jäädy'),
+    (3.0, '#E2824A', 'Jäämeri jäätön useimpina kesinä\nLapin porotalous uhattuna'),
+    (4.0, '#E24444', 'helleaallot 9,4×\netelä-Suomi käytännössä lumeton'),
 ]
 
 REGION_COLORS = {
