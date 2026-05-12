@@ -722,7 +722,8 @@ def _phase2():
         peak_temp = float(after_chk.max())
         peak_yr   = int(after_chk.timebounds.values[after_chk.values.argmax()])
 
-        display_end = min(peak_yr + 30, 2150)
+        sim_end = int(temp2.timebounds.max())
+        display_end = min(peak_yr + 30, sim_end)
 
         st.subheader('📊 Simulaatiotulokset')
         components.html(

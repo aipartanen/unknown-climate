@@ -41,9 +41,6 @@ REGION_EMISSIONS_2023_GTCO2 = {
     'Muu maailma 🌍': 16.7,
 }
 
-# Atomic mass ratio C/CO2: 12.011 / (12.011 + 2×15.999)
-# Used to convert GtCO2 → GtC for FaIR's internal CO2 FFI emission unit.
-CO2_TO_C = 12.011 / 44.009   # ≈ 0.2729
 
 
 def load_screened_configs() -> pd.DataFrame:
@@ -82,7 +79,7 @@ def load_observed_gmst() -> pd.DataFrame:
 
 def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end: int) -> np.ndarray:
     """
-    Build a global annual CO2 FFI emission time series (GtC/yr) from 1750 to year_end.
+    Build a global annual CO2 FFI emission time series (GtCO₂/yr) from 1750 to year_end.
 
     1750–2022: zeros here — caller leaves the SSP2-4.5 historical values intact.
     2023–CHECKPOINT_YEAR: each region ramps linearly from its 2023 baseline to (1−cut)×baseline.
@@ -101,16 +98,17 @@ def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end
     Returns
     -------
     trajectory : ndarray, shape (year_end − 1750,)
-        Timepoints-aligned global CO2 FFI in GtC/yr.
+        Timepoints-aligned global CO2 FFI in GtCO₂/yr — same unit as the
+        harmonized SSP NetCDF that FaIR's parameters were calibrated against.
         Indices 0…(2022−1750) are zero and will be overwritten by SSP data.
     """
     years = np.arange(1750, year_end)
     trajectory = np.zeros(len(years))
 
     for region, base_gtco2 in REGION_EMISSIONS_2023_GTCO2.items():
-        cut    = cuts.get(region, 0.0)
-        em_2023 = base_gtco2 * CO2_TO_C                    # GtC/yr
-        em_chk  = base_gtco2 * (1.0 - cut) * CO2_TO_C     # pledged level at CHECKPOINT_YEAR
+        cut     = cuts.get(region, 0.0)
+        em_2023 = base_gtco2                    # GtCO₂/yr
+        em_chk  = base_gtco2 * (1.0 - cut)     # GtCO₂/yr at CHECKPOINT_YEAR
 
         # 2023 → CHECKPOINT_YEAR: linear ramp
         mask1 = (years >= 2023) & (years < CHECKPOINT_YEAR)
@@ -315,7 +313,17 @@ def run_fair_game(cuts: dict, netzero_years: dict | None, config_id: int) -> xr.
     temp : xr.DataArray
         Surface temperature anomaly (°C re. 1850–1900 mean), dim (timebounds,).
     """
-    year_end = 2150   # long enough to capture peak temperature after any net-zero year
+    # Give the model enough runway to capture peak temperature after net-zero.
+    # High-ECS configs take 80–120 years post-net-zero to reach their maximum.
+    # Solar forcing data caps at 2300.
+    _YEAR_END_DEFAULT = 2150
+    _YEAR_END_MAX = 2300
+    _POST_NETZERO_BUFFER = 150
+    if netzero_years:
+        latest_nz = max(netzero_years.values())
+        year_end = min(max(_YEAR_END_DEFAULT, latest_nz + _POST_NETZERO_BUFFER), _YEAR_END_MAX)
+    else:
+        year_end = _YEAR_END_DEFAULT
 
     cal_out = FAIR_CAL_DIR / 'output' / f'fair-{FAIR_V}' / f'v{CAL_V}' / CONSTRAINT_SET
     df_configs_all = pd.read_csv(
