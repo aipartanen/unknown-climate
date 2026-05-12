@@ -215,10 +215,10 @@ def _init_state():
         'phase':           1,
         'option_indices':  {r: 0 for r in REGION_EMISSIONS_2023_GTCO2},
         'cuts':            _default_cuts,
-        # Default Phase 2: Maltillinen (+20 v) for all regions
+        # Default Phase 2: Maltillinen (index 1) for all regions
         'netzero_indices': {r: 1 for r in REGION_EMISSIONS_2023_GTCO2},
         'netzero_years':   {
-            r: min(_min_netzero_year(_default_cuts[r]) + 20, 2100)
+            r: min(_min_netzero_year(_default_cuts[r]) + NETZERO_OFFSETS[1][1], 2150)
             for r in REGION_EMISSIONS_2023_GTCO2
         },
         'temp_phase1':     None,
@@ -572,14 +572,14 @@ def _nz_input(region: str, min_nz: int, netzero_indices: dict) -> int:
     """
     if USE_SLIDERS:
         current = netzero_indices.get(region, 1)
-        nz_opts = [(lbl, min(min_nz + off, 2100)) for lbl, off in NETZERO_OFFSETS]
+        nz_opts = [(lbl, min(min_nz + off, 2150)) for lbl, off in NETZERO_OFFSETS]
         default_yr = nz_opts[current][1]
         return st.slider(
             region, min_value=min_nz, max_value=2150,
             value=max(default_yr, min_nz), step=5,
             key=f'slider_nz_{region}',
         )
-    nz_opts = [(lbl, min(min_nz + off, 2100)) for lbl, off in NETZERO_OFFSETS]
+    nz_opts = [(lbl, min(min_nz + off, 2150)) for lbl, off in NETZERO_OFFSETS]
     idx = st.radio(
         region,
         options=range(len(nz_opts)),
@@ -634,10 +634,10 @@ def _phase1():
         st.session_state['ecs']       = ecs
         # Phase 2 result is stale whenever cuts change and Phase 1 reruns
         st.session_state['temp_phase2'] = None
-        # Reset Phase 2 net-zero choices to Maltillinen (+20 v) based on new Phase 1 cuts
+        # Reset Phase 2 net-zero choices to Maltillinen (index 1) based on new Phase 1 cuts
         st.session_state['netzero_indices'] = {r: 1 for r in REGION_EMISSIONS_2023_GTCO2}
         st.session_state['netzero_years'] = {
-            r: min(_min_netzero_year(cuts[r]) + 20, 2100)
+            r: min(_min_netzero_year(cuts[r]) + NETZERO_OFFSETS[1][1], 2150)
             for r in REGION_EMISSIONS_2023_GTCO2
         }
         with st.spinner('Lasketaan FaIR-simulaatio...'):
