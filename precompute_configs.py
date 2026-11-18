@@ -1,262 +1,194 @@
 #!/usr/bin/env python3
 """
-Pre-screen the full 841-member FaIR posterior ensemble and save a shortlist
-of configs that reproduce present-day warming and span a plausible ECS range.
+Screen the 841-member FaIR posterior (fair-calibrate v1.6.0) so that the simulated
+temperature continues seemingly consistently with the observations at the point where the
+observed record ends.
 
 Run once offline:
     python precompute_configs.py
 
-Produces: data/screened_configs.csv  (config_id, T_2024, ECS)
+Produces: data/screened_configs.csv  (config_id, T_2025, dev_from_ref, ECS)
+          figures/screening_diagnostics.png
+
+PURPOSE
+-------
+The game shows one posterior member's temperature curve next to the observed GMST. The
+screening exists only so that this curve does not visibly jump away from the observations
+right after the observed record ends (2024). It is NOT meant to constrain the projections:
+the posterior already is constrained (RMSE against observed GMST, ECS, TCR, ocean heat, ...).
+Nothing before 2025 is screened on, and ECS is deliberately not trimmed.
+
+RULE
+----
+Keep member i if   |T_2025,i - ref| <= limit,   where
+  T_2025,i  member's 2025 annual mean (seeded stochastic run, 1850-1900 baseline)
+  ref       mean of the observed annual GMST 2022-2024 (IGCC)
+  limit     90th percentile of the historical misfit |T_y,i - mean(obs of the 3 preceding
+            years)| pooled over all members and years y = 1977...2024
+
+WHY THESE CHOICES
+-----------------
+* Time convention. FaIR temperature sits on timebounds (1 January); IGCC values are annual
+  means stamped at mid-year. The annual mean of year Y is the average of timebounds Y and
+  Y+1 (the calibration likewise compares observation Y.5 with the timebound after it). The
+  2025 annual mean therefore needs timebounds 2025 and 2026.
+* Reference = 2022-24 mean (1.370 degC), not 2024 alone (1.523 degC). 2024 was boosted by
+  El Nino; screening on it selects members whose noise happened to be high and shifts the
+  passing members' median ECS from 2.99 to 3.16-3.28 degC. The 3-year mean leaves the ECS
+  distribution essentially unchanged (median 2.99).
+* Limit from the historical model-minus-observed misfit, not from observed one-year steps.
+  FaIR has LESS year-to-year variability than the observations (std of one-year steps
+  0.071 vs 0.126 degC, 1975-2023) but MORE persistent variability around the trend (detrended
+  std 0.112 vs 0.097 degC). Members therefore wander further from the observed level than the
+  observed one-year steps suggest, and the observed steps would be too strict a yardstick.
+  The misfit distribution is what the calibration itself accepted (RMSE < 0.19 degC).
+* The historical comparison mirrors the 2025 comparison (member year vs mean of the 3
+  preceding observed years), so the forced-trend lag is included consistently.
+* 90th percentile: removes clear outliers but keeps most of the ensemble.
+* Screening on SSP2-4.5 emissions, whereas the game overrides CO2 FFI from 2023. The
+  difference over 2023-2025 is a few tenths of GtCO2 per year and is negligible for 2025.
+
+Expected results (from the study that led to this rule): ref 1.370, limit ~0.253 degC,
+736 of 841 members pass, passing ECS 5/50/95% = 2.0 / 2.99 / 4.9 degC.
 """
 from pathlib import Path
 import numpy as np
 import pandas as pd
-import xarray as xr
-from fair import FAIR
-from fair.io import read_properties
-from fair.interface import fill, initialise
+import matplotlib.pyplot as plt
 
-FAIR_CAL_DIR = Path('/Users/partanen/version-controlled/ghgbudgets/data/fair_calibrate')
-FAIR_V = '2.1.3'
-CAL_V  = '1.4'
-CONSTRAINT_SET = 'all-2022'
-BASE_SSP = 'ssp245'
+from fair_runner import (
+    SCREENED_CONFIGS_PATH,
+    annual_mean,
+    load_observed_gmst,
+    load_posterior,
+    rebase_to_1850_1900,
+    setup_fair,
+)
 
-# Observed 2024 annual mean warming from Indicators of Global Climate Change 2024
-T_2024_OBS = 1.36   # °C above 1850–1900
-
-# Accept configs within this window around observed
-T_TOLERANCE = 0.10  # °C
-
-# IPCC AR6 "very likely" ECS range (2.0–5.0 °C) — filter out extreme outliers
-ECS_MIN = 2.0
-ECS_MAX = 5.0
-
-OUTPUT_DIR = Path('data')
-
-
-def _load_calibration_data():
-    cal_out = FAIR_CAL_DIR / 'output' / f'fair-{FAIR_V}' / f'v{CAL_V}' / CONSTRAINT_SET
-    df_configs  = pd.read_csv(cal_out / 'posteriors' / 'calibrated_constrained_parameters.csv', index_col=0)
-    df_methane  = pd.read_csv(cal_out / 'calibrations' / 'CH4_lifetime.csv', index_col=0)
-    df_landuse  = pd.read_csv(cal_out / 'calibrations' / 'landuse_scale_factor.csv', index_col=0)
-    df_lapsi    = pd.read_csv(cal_out / 'calibrations' / 'lapsi_scale_factor.csv', index_col=0)
-    return df_configs, df_methane, df_landuse, df_lapsi
-
-
-def _load_forcing_data(year_end: int):
-    forcing_dir = FAIR_CAL_DIR / 'data' / 'forcing'
-    df_solar    = pd.read_csv(forcing_dir / 'solar_erf_timebounds.csv', index_col='year')
-    df_volcanic = pd.read_csv(forcing_dir / 'volcanic_ERF_1750-2101_timebounds.csv', index_col='timebounds')
-
-    nyears = year_end - 1750 + 1
-    solar_forcing    = df_solar['erf'].loc[1750:year_end].values
-    volcanic_forcing = np.zeros(nyears)
-    year_end_volcanic = min(2101, year_end)
-    volcanic_forcing[:year_end_volcanic - 1750 + 1] = df_volcanic['erf'].loc[1750:year_end_volcanic].values
-    return solar_forcing, volcanic_forcing
-
-
-def run_historical(df_configs, df_methane, df_landuse, df_lapsi, year_end: int) -> xr.DataArray:
-    """
-    Run FaIR 1750–year_end with all configs in df_configs using ssp245 emissions.
-    Returns surface temperature anomaly DataArray (timebounds × config),
-    rebased to 1850–1900.
-    """
-    n_configs = len(df_configs)
-    valid_all  = df_configs.index
-    nyears     = year_end - 1750 + 1
-
-    solar_forcing, volcanic_forcing = _load_forcing_data(year_end)
-
-    trend_shape = np.ones(nyears)
-    trend_shape[:271] = np.linspace(0, 1, 271)
-
-    f = FAIR(ch4_method='Thornhill2021')
-    f.define_time(1750, year_end, 1)
-    f.define_scenarios([BASE_SSP])
-    f.define_configs(valid_all)
-
-    species, properties = read_properties()
-    species.remove('Halon-1202')
-    species.remove('NOx aviation')
-    species.remove('Contrails')
-    f.define_species(species, properties)
-    f.allocate()
-
-    da_emissions = xr.load_dataarray(
-        FAIR_CAL_DIR / 'output' / f'fair-{FAIR_V}' / f'v{CAL_V}' / CONSTRAINT_SET
-        / 'emissions' / 'ssps_harmonized_1750-2499.nc'
-    )
-    da = da_emissions.loc[dict(config='unspecified', scenario=[BASE_SSP], specie=species)][:nyears - 1, ...]
-    fe = da.expand_dims(dim=['config'], axis=(2))
-    f.emissions = fe.drop_vars('config') * np.ones((1, 1, n_configs, 1))
-    f.emissions.coords['config'] = valid_all
-
-    fill(f.forcing,
-         volcanic_forcing[:, None, None] * df_configs['fscale_Volcanic'].values.squeeze(),
-         specie='Volcanic')
-    fill(f.forcing,
-         solar_forcing[:, None, None] * df_configs['fscale_solar_amplitude'].values.squeeze()
-         + trend_shape[:, None, None] * df_configs['fscale_solar_trend'].values.squeeze(),
-         specie='Solar')
-
-    fill(f.climate_configs['ocean_heat_capacity'],    df_configs.loc[:, 'clim_c1':'clim_c3'].values)
-    fill(f.climate_configs['ocean_heat_transfer'],    df_configs.loc[:, 'clim_kappa1':'clim_kappa3'].values)
-    fill(f.climate_configs['deep_ocean_efficacy'],    df_configs['clim_epsilon'].values.squeeze())
-    fill(f.climate_configs['gamma_autocorrelation'],  df_configs['clim_gamma'].values.squeeze())
-    fill(f.climate_configs['sigma_eta'],              df_configs['clim_sigma_eta'].values.squeeze())
-    fill(f.climate_configs['sigma_xi'],               df_configs['clim_sigma_xi'].values.squeeze())
-    fill(f.climate_configs['seed'],                   df_configs['seed'])
-    # Deterministic run to match game mode; stochastic noise would create
-    # per-seed T_2024 offsets that don't reflect the forced-response screening target.
-    fill(f.climate_configs['stochastic_run'],         False)
-    fill(f.climate_configs['use_seed'],               True)
-    fill(f.climate_configs['forcing_4co2'],           df_configs['clim_F_4xCO2'])
-
-    f.fill_species_configs()
-
-    fill(f.species_configs['iirf_0'],           df_configs['cc_r0'].values.squeeze(),  specie='CO2')
-    fill(f.species_configs['iirf_airborne'],    df_configs['cc_rA'].values.squeeze(),  specie='CO2')
-    fill(f.species_configs['iirf_uptake'],      df_configs['cc_rU'].values.squeeze(),  specie='CO2')
-    fill(f.species_configs['iirf_temperature'], df_configs['cc_rT'].values.squeeze(),  specie='CO2')
-    fill(f.species_configs['land_use_cumulative_emissions_to_forcing'],
-         df_landuse.loc['historical_best', 'CO2_AFOLU'], specie='CO2 AFOLU')
-    fill(f.species_configs['aci_scale'],  df_configs['aci_beta'].values.squeeze())
-    fill(f.species_configs['aci_shape'],  df_configs['aci_shape_so2'].values.squeeze(), specie='Sulfur')
-    fill(f.species_configs['aci_shape'],  df_configs['aci_shape_bc'].values.squeeze(),  specie='BC')
-    fill(f.species_configs['aci_shape'],  df_configs['aci_shape_oc'].values.squeeze(),  specie='OC')
-    fill(f.species_configs['unperturbed_lifetime'],
-         df_methane.loc['historical_best', 'base'], specie='CH4')
-    fill(f.species_configs['ch4_lifetime_chemical_sensitivity'],
-         df_methane.loc['historical_best', 'CH4'],  specie='CH4')
-    fill(f.species_configs['ch4_lifetime_chemical_sensitivity'],
-         df_methane.loc['historical_best', 'N2O'],  specie='N2O')
-    fill(f.species_configs['lifetime_temperature_sensitivity'],
-         df_methane.loc['historical_best', 'temp'])
-    fill(f.species_configs['ch4_lifetime_chemical_sensitivity'],
-         df_methane.loc['historical_best', 'VOC'],  specie='VOC')
-    fill(f.species_configs['ch4_lifetime_chemical_sensitivity'],
-         df_methane.loc['historical_best', 'NOx'],  specie='NOx')
-    fill(f.species_configs['ch4_lifetime_chemical_sensitivity'],
-         df_methane.loc['historical_best', 'HC'],
-         specie='Equivalent effective stratospheric chlorine')
-    fill(f.species_configs['lapsi_radiative_efficiency'],
-         df_lapsi.loc['historical_best', 'BC'], specie='BC')
-
-    fill(f.species_configs['baseline_emissions'], 19.41683292,     specie='NOx')
-    fill(f.species_configs['baseline_emissions'], 2.293964929,     specie='Sulfur')
-    fill(f.species_configs['baseline_emissions'], 348.4549732,     specie='CO')
-    fill(f.species_configs['baseline_emissions'], 60.62284009,     specie='VOC')
-    fill(f.species_configs['baseline_emissions'], 2.096765609,     specie='BC')
-    fill(f.species_configs['baseline_emissions'], 15.44571911,     specie='OC')
-    fill(f.species_configs['baseline_emissions'], 6.656462698,     specie='NH3')
-    fill(f.species_configs['baseline_emissions'], 38.246272,       specie='CH4')
-    fill(f.species_configs['baseline_emissions'], 0.92661989,      specie='N2O')
-    fill(f.species_configs['baseline_emissions'], 0.02129917,      specie='CCl4')
-    fill(f.species_configs['baseline_emissions'], 202.7251231,     specie='CHCl3')
-    fill(f.species_configs['baseline_emissions'], 211.0095537,     specie='CH2Cl2')
-    fill(f.species_configs['baseline_emissions'], 4544.519056,     specie='CH3Cl')
-    fill(f.species_configs['baseline_emissions'], 111.4920237,     specie='CH3Br')
-    fill(f.species_configs['baseline_emissions'], 0.008146006,     specie='Halon-1211')
-    fill(f.species_configs['baseline_emissions'], 0.000010554155,  specie='SO2F2')
-    fill(f.species_configs['baseline_emissions'], 0,               specie='CF4')
-
-    for specie in ['BC', 'CH4', 'N2O', 'NH3', 'NOx', 'OC', 'Sulfur', 'VOC',
-                   'Equivalent effective stratospheric chlorine']:
-        fill(f.species_configs['erfari_radiative_efficiency'],
-             df_configs[f'ari_{specie}'], specie=specie)
-
-    fill(f.species_configs['forcing_scale'],
-         df_configs['fscale_CO2'].values.squeeze(), specie='CO2')
-    for specie in ['CH4', 'N2O']:
-        fill(f.species_configs['forcing_scale'],
-             df_configs[f'fscale_{specie}'].values.squeeze(), specie=specie)
-    for specie in ['Stratospheric water vapour', 'Light absorbing particles on snow and ice']:
-        fill(f.species_configs['forcing_scale'],
-             df_configs[f'fscale_{specie}'].values.squeeze(), specie=specie)
-    fill(f.species_configs['forcing_scale'],
-         df_configs['fscale_Land use'].values.squeeze(), specie='Land use')
-
-    minor_ghgs = [
-        'CFC-11', 'CFC-12', 'CFC-113', 'CFC-114', 'CFC-115', 'HCFC-22',
-        'HCFC-141b', 'HCFC-142b', 'CCl4', 'CHCl3', 'CH2Cl2', 'CH3Cl',
-        'CH3CCl3', 'CH3Br', 'Halon-1211', 'Halon-1301', 'Halon-2402',
-        'CF4', 'C2F6', 'C3F8', 'c-C4F8', 'C4F10', 'C5F12', 'C6F14',
-        'C7F16', 'C8F18', 'NF3', 'SF6', 'SO2F2', 'HFC-125', 'HFC-134a',
-        'HFC-143a', 'HFC-152a', 'HFC-227ea', 'HFC-23', 'HFC-236fa',
-        'HFC-245fa', 'HFC-32', 'HFC-365mfc', 'HFC-4310mee',
-    ]
-    for specie in minor_ghgs:
-        fill(f.species_configs['forcing_scale'],
-             df_configs['fscale_minorGHG'].values.squeeze(), specie=specie)
-
-    for specie in ['Equivalent effective stratospheric chlorine', 'CO', 'VOC', 'NOx', 'CH4', 'N2O']:
-        fill(f.species_configs['ozone_radiative_efficiency'],
-             df_configs[f'o3_{specie}'], specie=specie)
-
-    fill(f.species_configs['forcing_efficacy'], 0.6, specie='Volcanic')
-    fill(f.species_configs['baseline_concentration'],
-         df_configs['cc_co2_concentration_1750'].values.squeeze(), specie='CO2')
-
-    initialise(f.concentration, f.species_configs['baseline_concentration'])
-    initialise(f.forcing, 0)
-    initialise(f.temperature, 0)
-    initialise(f.cumulative_emissions, 0)
-    initialise(f.airborne_emissions, 0)
-
-    f.run()
-
-    # ECS per config from FaIR's built-in analytical EBM property (no diagnostic runs).
-    # f.ebms['ecs'] has only a 'config' dimension — ECS is scenario-independent.
-    ecs_series = f.ebms['ecs'].to_series()
-
-    # Surface temperature, rebased to 1850–1900 mean (IPCC AR6 pre-industrial baseline)
-    temp = f.temperature.sel(layer=0, scenario=BASE_SSP)
-    baseline = temp.sel(timebounds=slice(1850, 1900)).mean(dim='timebounds')
-    temp_rebased = temp - baseline
-
-    return temp_rebased, ecs_series
+# Last timebound simulated. 2025 annual mean needs timebounds 2025 and 2026; the run is
+# extended to 2036 only so the diagnostic figure can show the lines up to 2035.
+YEAR_END = 2036
+REF_YEARS = (2022, 2023, 2024)   # observed years averaged to form the reference
+N_PRECEDING = len(REF_YEARS)     # window length in the historical misfit statistic
+HIST_FIRST_YEAR = 1977           # first year of the historical misfit pool (~ last 50 years,
+                                 # when forced warming dominates the record)
+LIMIT_PERCENTILE = 90
+FIG_PATH = Path('figures') / 'screening_diagnostics.png'
 
 
 def main():
-    OUTPUT_DIR.mkdir(exist_ok=True)
+    FIG_PATH.parent.mkdir(exist_ok=True)
 
-    print('Loading calibration data...')
-    df_configs, df_methane, df_landuse, df_lapsi = _load_calibration_data()
-    print(f'  {len(df_configs)} posterior configs loaded.')
+    df_post = load_posterior()
+    config_ids = list(df_post.index)
+    print(f'{len(config_ids)} posterior members; running seeded stochastic FaIR to {YEAR_END} ...')
 
-    print('Running FaIR 1750–2025 for all configs...')
-    temp_all, ecs_all = run_historical(df_configs, df_methane, df_landuse, df_lapsi, year_end=2025)
+    f = setup_fair(config_ids, YEAR_END)
+    f.run()
+    temp = rebase_to_1850_1900(f.temperature.sel(layer=0, scenario='game'))   # (timebounds, config)
 
-    # T_2024: use the timebounds value at 2024 (mid-year point)
-    t_2024 = temp_all.sel(timebounds=2024).to_series()
+    # ECS from FaIR's analytical EBM property (scenario independent)
+    ecs = f.ebms['ecs'].to_series()
+    ecs.index = config_ids
 
-    print(f'\nT_2024 range: {t_2024.min():.3f} – {t_2024.max():.3f} °C')
-    print(f'T_2024 median: {t_2024.median():.3f} °C  (target {T_2024_OBS} ± {T_TOLERANCE})')
+    df_obs = load_observed_gmst()
+    obs = dict(zip(np.floor(df_obs['year'].values).astype(int), df_obs['gmst'].values))
 
-    # Step 1: filter by T_2024 proximity to observed
-    mask_t = (t_2024 - T_2024_OBS).abs() <= T_TOLERANCE
-    print(f'\nStep 1 — T_2024 filter: {mask_t.sum()} / {len(t_2024)} configs pass.')
+    # --- reference: mean observed 2022-24 ---
+    ref = float(np.mean([obs[y] for y in REF_YEARS]))
 
-    # Step 2: filter by ECS plausibility (IPCC AR6 very likely range 2.0–5.0 °C)
-    mask_ecs = (ecs_all >= ECS_MIN) & (ecs_all <= ECS_MAX)
-    mask_both = mask_t & mask_ecs
-    print(f'Step 2 — ECS filter ({ECS_MIN}–{ECS_MAX} °C): {mask_both.sum()} configs pass.')
+    # --- limit: pooled historical misfit ---
+    misfit = []
+    for year in range(HIST_FIRST_YEAR, 2025):
+        obs_ref = np.mean([obs[y] for y in range(year - N_PRECEDING, year)])
+        misfit.append(np.abs(annual_mean(temp, year).values - obs_ref))
+    misfit = np.concatenate(misfit)
+    limit = float(np.percentile(misfit, LIMIT_PERCENTILE))
+
+    # --- apply to 2025 ---
+    t_2025 = annual_mean(temp, 2025).values
+    dev = t_2025 - ref
+    passed = np.abs(dev) <= limit
+
+    # Order-of-magnitude checks against the study that defined the rule
+    print(f'\nObserved reference (mean 2022-24): {ref:.3f} degC')
+    print(f'Historical misfit pool: n={len(misfit)}, {LIMIT_PERCENTILE}th percentile limit = {limit:.3f} degC')
+    print(f'Member T_2025 min/median/max: {t_2025.min():.3f} / {np.median(t_2025):.3f} / {t_2025.max():.3f} degC')
+    print(f'Members passing: {passed.sum()} / {len(passed)}')
+    print('ECS 5/50/95% all:     ' + ' / '.join(f'{v:.2f}' for v in np.percentile(ecs, [5, 50, 95])))
+    print('ECS 5/50/95% passing: ' + ' / '.join(f'{v:.2f}' for v in np.percentile(ecs[passed], [5, 50, 95])))
+    assert abs(ref - 1.370) < 0.001, 'observed 2022-24 reference changed'
+    assert 0.20 < limit < 0.30, 'misfit limit outside the expected ~0.25 degC'
+    assert 600 < passed.sum() < 841, 'unexpected number of passing members'
 
     screened = pd.DataFrame({
-        'T_2024': t_2024[mask_both],
-        'ECS':    ecs_all[mask_both],
-    })
-    screened.index.name = 'config_id'
+        'T_2025': t_2025[passed],
+        'dev_from_ref': dev[passed],
+        'ECS': ecs.values[passed],
+    }, index=pd.Index(np.array(config_ids)[passed], name='config_id'))
+    SCREENED_CONFIGS_PATH.parent.mkdir(exist_ok=True)
+    screened.to_csv(SCREENED_CONFIGS_PATH)
+    print(f'\nSaved {len(screened)} configs to {SCREENED_CONFIGS_PATH}')
 
-    ecs_q = screened['ECS'].quantile([0.05, 0.50, 0.95])
-    print(f'\nScreened ECS percentiles — 5th: {ecs_q[0.05]:.2f}  '
-          f'50th: {ecs_q[0.50]:.2f}  95th: {ecs_q[0.95]:.2f} °C')
+    # --- diagnostic figure ---
+    idx_pass = np.where(passed)[0]
+    i_hi = idx_pass[np.argmax(dev[idx_pass])]
+    i_lo = idx_pass[np.argmin(dev[idx_pass])]
 
-    out_path = OUTPUT_DIR / 'screened_configs.csv'
-    screened.to_csv(out_path)
-    print(f'\nSaved {len(screened)} configs to {out_path}')
+    fig, axs = plt.subplots(2, 2, figsize=(13, 9))
+
+    ax = axs[0, 0]
+    ax.hist(misfit, bins=40, color='#5A84E2', alpha=0.7)
+    ax.axvline(limit, color='k', linestyle='--', label=f'{LIMIT_PERCENTILE}th percentile = {limit:.2f} °C')
+    ax.set_xlabel('|member annual mean − mean of 3 preceding observed years| (°C)')
+    ax.set_ylabel('Member-years')
+    ax.set_title(f'Historical misfit {HIST_FIRST_YEAR}–2024 (defines the limit)')
+    ax.legend()
+
+    ax = axs[0, 1]
+    ax.hist(dev, bins=40, color='#5A84E2', alpha=0.7)
+    ax.axvline(-limit, color='k', linestyle='--')
+    ax.axvline(limit, color='k', linestyle='--', label=f'± {limit:.2f} °C')
+    ax.set_xlabel(f'T_2025 − observed 2022–24 mean ({ref:.2f} °C)')
+    ax.set_ylabel('Members')
+    ax.set_title(f'2025 deviation: {passed.sum()} of {len(passed)} members pass')
+    ax.legend()
+
+    ax = axs[1, 0]
+    bins = np.linspace(1.2, 8, 35)
+    ax.hist(ecs, bins=bins, color='lightgrey', density=True, label=f'all {len(ecs)} (median {ecs.median():.2f})')
+    ax.hist(ecs[passed], bins=bins, histtype='step', linewidth=2, color='#E0792B', density=True,
+            label=f'passing {passed.sum()} (median {np.median(ecs[passed]):.2f})')
+    ax.set_xlabel('ECS (°C)')
+    ax.set_ylabel('Density')
+    ax.set_title('ECS before and after screening (no ECS trim)')
+    ax.legend()
+
+    ax = axs[1, 1]
+    years = np.arange(1950, 2036)
+    series = np.array([annual_mean(temp, y).values for y in years])   # (years, members)
+    ax.fill_between(years + 0.5, np.percentile(series[:, passed], 5, axis=1),
+                    np.percentile(series[:, passed], 95, axis=1), color='#5A84E2', alpha=0.2,
+                    label='passing members 5–95%')
+    ax.plot(years + 0.5, series[:, i_hi], color='#D1495B',
+            label=f'highest passing ({config_ids[i_hi]}, ECS {ecs.values[i_hi]:.2f})')
+    ax.plot(years + 0.5, series[:, i_lo], color='#2E86AB',
+            label=f'lowest passing ({config_ids[i_lo]}, ECS {ecs.values[i_lo]:.2f})')
+    obs_years = np.array(sorted(obs))
+    mask = obs_years >= 1950
+    ax.plot(obs_years[mask] + 0.5, [obs[y] for y in obs_years[mask]], color='k', marker='o',
+            markersize=3, label='IGCC observed')
+    ax.errorbar([2025.5], [ref], yerr=[[limit], [limit]], color='k', capsize=5, linewidth=1.5,
+                label='reference ± limit')
+    ax.axvline(2025, color='grey', linestyle=':', linewidth=1)
+    ax.set_xlabel('Year (annual means at mid-year)')
+    ax.set_ylabel('Temperature anomaly vs 1850–1900 (°C)')
+    ax.set_title('Passing members; SSP2-4.5 after 2024')
+    ax.legend(fontsize=8, loc='upper left')
+
+    fig.tight_layout()
+    fig.savefig(FIG_PATH, dpi=150)
+    print(f'Saved {FIG_PATH}')
 
 
 if __name__ == '__main__':

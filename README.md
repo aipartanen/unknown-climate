@@ -26,18 +26,19 @@ including how it compares to the Phase 1 scenario.
 ## Climate model
 
 Each game session draws one configuration at random from a pre-screened shortlist of
-FaIR posterior ensemble members (fair-calibrate v1.4, all-2022 constraint set).
-Screening criteria: modelled 2024 warming within ±0.10 °C of the IGCC 2024 observed value
-(1.36 °C above 1850–1900) and ECS within the IPCC AR6 very likely range (2.0–5.0 °C).
+FaIR posterior ensemble members (fair-calibrate v1.6.0, FaIR 2.2.4; 841 members).
+Screening is only for visual continuity with the observations: a member is kept if its 2025
+annual-mean temperature is within about 0.25 °C of the mean of the observed (IGCC) 2022–2024
+temperatures. The rule and its rationale are documented in `precompute_configs.py`.
 Non-CO₂ forcing follows the SSP2-4.5 scenario throughout.
-All runs are deterministic (`stochastic_run=False`).
+Runs are stochastic with fixed per-member seeds, so a member always gives the same curve.
 
 ## Setup
 
 ### Prerequisites
 
 - [Mamba](https://mamba.readthedocs.io/) or Conda
-- fair-calibrate data at the path configured in `fair_runner.py` (`FAIR_CAL_DIR`)
+- fair-calibrate v1.6.0 data, included in `data/fair_calibrate/` (see the README there)
 
 ### Install
 
@@ -52,7 +53,8 @@ mamba activate climate-game
 python precompute_configs.py
 ```
 
-This writes `data/screened_configs.csv` (~434 configs). Re-run if you change the screening criteria.
+This writes `data/screened_configs.csv` (736 configs) and `figures/screening_diagnostics.png`.
+Re-run if you change the screening criteria. The CSV is committed so the app starts from a fresh clone.
 
 ### Run
 
@@ -70,4 +72,5 @@ Open the printed URL in a browser (or project it for the class).
 | `fair_runner.py` | FaIR wrapper: emissions builder, single-config run |
 | `precompute_configs.py` | Offline screening script → `data/screened_configs.csv` |
 | `environment.yml` | Conda environment definition |
-| `data/screened_configs.csv` | Gitignored; regenerate with `precompute_configs.py` |
+| `data/screened_configs.csv` | Screened member shortlist; regenerate with `precompute_configs.py` |
+| `data/fair_calibrate/` | fair-calibrate v1.6.0 files used by the model (copied from ghgbudgets) |

@@ -1,9 +1,6 @@
 # macOS
 .DS_Store
 
-# Precomputed results (regenerate with precompute_configs.py)
-data/screened_configs.csv
-
 # Python
 __pycache__/
 *.py[cod]

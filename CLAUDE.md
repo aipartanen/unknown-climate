@@ -23,8 +23,10 @@ The app is not yet ready for release. The plan for release is saved at
 
 ## Pipeline
 
-- `precompute_configs.py` — screens FaIR ensemble members, generates config data files
-- `fair_runner.py` — FaIR v2.2 wrapper used by the app
+- `precompute_configs.py` — screens FaIR ensemble members, generates `data/screened_configs.csv`
+  (rule and rationale are documented in the script header)
+- `fair_runner.py` — FaIR v2.2 wrapper used by the app (also used by the screening, so the
+  seeded stochastic runs shown in the game are the ones that were screened)
 - `app.py` — Streamlit UI (main entry point)
 - `make_presentation_figure.py` — standalone figure generation utility
 
@@ -32,5 +34,10 @@ The app is not yet ready for release. The plan for release is saved at
 
 - Temperature anomalies relative to 1850–1900 baseline
 - CO₂ emissions in GtCO₂/yr
-- FaIR posterior from fair-calibrate v1.4, all-2022 constraint set
-- 2024 warming target: within ±0.10 °C of IGCC 2024 observed value
+- FaIR 2.2.4 with the fair-calibrate v1.6.0 constrained posterior (841 members), vendored in
+  `data/fair_calibrate/` (copied from ghgbudgets)
+- FaIR temperature is on timebounds (1 Jan); IGCC observations are annual means at mid-year.
+  Annual mean of year Y = mean of timebounds Y and Y+1.
+- Screening (continuity with observations after 2024): keep members whose seeded stochastic 2025
+  annual mean is within the 90th percentile of the historical misfit (≈0.25 °C) of the observed
+  2022–24 mean (IGCC). No ECS trim.
