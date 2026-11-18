@@ -31,7 +31,8 @@ TOTAL_2023   = sum(REGION_EMISSIONS_2023_GTCO2.values())
 PARIS_15     = 1.5
 PARIS_20     = 2.0
 CHECKPOINT      = 2040   # Phase 1 pledge year
-ANIM_START      = 2026   # year from which temperature trajectory is animated
+ANIM_START      = 2025   # first year of the simulated line, animated year by year. The observed
+                         # record (IGCC) ends with 2024, so the model is drawn only after it.
 ANIM_INTERVAL   = 80     # ms per animation frame (increase to slow down)
 
 # Emission reduction options per region (4 discrete choices, ordered least to most ambitious).
@@ -348,8 +349,9 @@ def _make_temperature_animation(temp_da, year_start, year_end,
                                  highlight_year=None, show_peak=False,
                                  phase1_da=None, inset_metrics=None):
     """
-    Animated temperature trajectory: historical portion (up to ANIM_START) is static;
-    future portion is drawn year-by-year. Returns an HTML string for components.html().
+    Temperature trajectory: observations (static, up to 2024) followed by the simulated
+    line from ANIM_START onward, drawn year-by-year. The simulation is not shown over the
+    observed period. Returns an HTML string for components.html().
 
     temp_da        : xr.DataArray dim 'timebounds', single config
     phase1_da      : if given, draw Phase 1 trajectory as grey dashed line (static)
@@ -368,28 +370,26 @@ def _make_temperature_animation(temp_da, year_start, year_end,
     yr     = years[mask]
     t_vals = temp_da.isel(timebounds=mask).values
 
-    # Split at animation boundary; overlap by one point so the line is continuous
-    h_mask   = yr <= ANIM_START
+    # Only the part after the observed record is shown
     fut_mask = yr >= ANIM_START
     yr_fut   = yr[fut_mask]
     t_fut    = t_vals[fut_mask]
 
+    obs_mask = (gmst['year'] >= year_start) & (gmst['year'] <= min(ANIM_START, year_end))
+
     # Fix axis limits before drawing so text placements are stable
-    y_min = min(float(t_vals.min()), 0.0) - 0.15
-    y_max = float(t_vals.max()) + 0.45
+    y_min = min(float(gmst.loc[obs_mask, 'gmst'].min()), 0.0) - 0.15
+    y_max = max(float(t_fut.max()), float(gmst.loc[obs_mask, 'gmst'].max())) + 0.45
     ax.set_xlim(year_start, year_end)
     ax.set_ylim(y_min, y_max)
 
     # --- static elements ---
     if phase1_da is not None:
         yr1 = phase1_da.timebounds.values
-        m1  = (yr1 >= year_start) & (yr1 <= CHECKPOINT)
+        m1  = (yr1 >= ANIM_START) & (yr1 <= CHECKPOINT)
         ax.plot(yr1[m1], phase1_da.isel(timebounds=m1).values,
                 color='#888888', linewidth=2.5, linestyle='--', label='Vaihe 1')
 
-    ax.plot(yr[h_mask], t_vals[h_mask], color='#5A84E2', linewidth=2.5)
-
-    obs_mask = (gmst['year'] >= year_start) & (gmst['year'] <= min(2025, year_end))
     ax.plot(gmst.loc[obs_mask, 'year'], gmst.loc[obs_mask, 'gmst'],
             color='white', linewidth=1.5, label='Havaittu')
 
@@ -432,12 +432,20 @@ def _make_temperature_animation(temp_da, year_start, year_end,
     model_line, = ax.plot([], [], color='#5A84E2', linewidth=2.5, label='Ilmastomalli')
     ax.legend(facecolor='#1e2130', labelcolor='white', fontsize=9)
 
+    # The step from the last observed point (2024) to the first modelled point is drawn only
+    # on the final frame, after the rest of the simulated line. Plot only: the FaIR results
+    # themselves are not modified.
+    jump_line, = ax.plot([], [], color='#5A84E2', linewidth=2.5)
+    jump_x = [gmst.loc[obs_mask, 'year'].iloc[-1], yr_fut[0]]
+    jump_y = [gmst.loc[obs_mask, 'gmst'].iloc[-1], t_fut[0]]
+
     n_frames = len(yr_fut)
 
     def update(frame):
         model_line.set_data(yr_fut[:frame + 1], t_fut[:frame + 1])
         # On the final frame, add annotations that summarise the result
         if frame == n_frames - 1:
+            jump_line.set_data(jump_x, jump_y)
             if show_peak:
                 peak_temp = float(t_vals.max())
                 peak_yr   = int(yr[t_vals.argmax()])
@@ -659,7 +667,8 @@ def _phase1():
     if st.session_state['temp_phase1'] is not None:
         temp   = st.session_state['temp_phase1']
         t_chk = float(temp.sel(timebounds=CHECKPOINT))
-        t_now = float(temp.sel(timebounds=2024))
+        _obs = _load_gmst()
+        obs_2024 = float(_obs.loc[np.floor(_obs['year']) == 2024, 'gmst'].iloc[0])   # IGCC observed 2024
 
         _ecs_banner()
         st.subheader('📊 Simulaatiotulokset')
@@ -668,7 +677,7 @@ def _phase1():
                 temp, year_start=1900, year_end=CHECKPOINT,
                 highlight_year=CHECKPOINT,
                 inset_metrics=[
-                    ('Malli: lämpötila nyt (2024)',        f'+{t_now:.2f} °C'),
+                    ('Havaittu lämpötila 2024',            f'+{obs_2024:.2f} °C'),
                     (f'Malli: keskilämpötila {CHECKPOINT}', f'+{t_chk:.2f} °C'),
                 ],
             ),
