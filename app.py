@@ -25,6 +25,10 @@ from fair_runner import (
     load_screened_configs,
     load_observed_gmst,
     run_fair_game,
+    regional_emissions_in_year,
+    emulate_temperature,
+    posterior_weights,
+    weighted_mean_interval,
 )
 
 TOTAL_2023   = sum(REGION_EMISSIONS_2023_GTCO2.values())
@@ -34,6 +38,16 @@ CHECKPOINT      = 2040   # Phase 1 pledge year
 ANIM_START      = 2025   # first year of the simulated line, animated year by year. The observed
                          # record (IGCC) ends with 2024, so the model is drawn only after it.
 ANIM_INTERVAL   = 80     # ms per animation frame (increase to slow down)
+ESTIMATE_YEAR   = 2100   # year of the warming estimate shown to the players
+
+# Estimate shown before the model is drawn: the whole screened ensemble, mean and 95 % interval.
+# After the first simulation the players get a noisy observation of the drawn member (its emulated
+# ESTIMATE_YEAR temperature under the Phase 1 pledges + N(0, ESTIMATE_OBS_SD)). All later estimates
+# (temperature under any Phase 2 decision, and ECS) are the Bayesian-weighted ensemble: the
+# best estimate is biased by the observation noise, the 95 % interval narrows and stays calibrated,
+# and ECS narrows consistently because it correlates with the temperature response (r ≈ 0.8).
+# The weights are fixed per game, so moving the sliders cannot average the noise away.
+ESTIMATE_OBS_SD = 0.2    # °C
 
 # Emission reduction options per region (4 discrete choices, ordered least to most ambitious).
 # Based on emission_reduction_options.md.
@@ -233,18 +247,34 @@ def _init_state():
         # config_id and ecs are None until "Simuloi!" is first clicked
         'config_id':       None,
         'ecs':             None,
+        # member weights (pd.Series by config_id) from the noisy observation, set at "Simuloi!"
+        'estimate_weights': None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 
-def _ecs_banner():
-    ecs = st.session_state['ecs']
+def _estimate_banner(cuts, netzero_years):
+    """Temperature and ECS estimate (weighted mean, 95 % interval) for the drawn round."""
+    weights = st.session_state['estimate_weights']
+    temperature = emulate_temperature(cuts, netzero_years, ESTIMATE_YEAR)
+    t_mean, t_lo, t_hi = weighted_mean_interval(temperature, weights)
+    e_mean, e_lo, e_hi = weighted_mean_interval(_load_screened()['ECS'], weights)
     st.info(
-        f'🎲 **Tämän kierroksen ilmastomalli:** '
-        f'Tasapainoherkkyys (ECS) = **{ecs:.2f} °C**  \n'
-        f'*(Näin paljon Maa lämpenisi, jos CO₂-pitoisuus kaksinkertaistuisi pysyvästi)*'
+        '🎲 **Arvio tämän kierroksen ilmastomallista** (havainnossa on epävarmuutta):  \n'
+        f'Lämpötila {ESTIMATE_YEAR}: **{t_mean:.1f} °C** ({t_lo:.1f}–{t_hi:.1f} °C)  \n'
+        f'Tasapainoherkkyys (ECS): **{e_mean:.1f} °C** ({e_lo:.1f}–{e_hi:.1f} °C)  \n'
+        '*(ECS: näin paljon Maa lämpenisi, jos CO₂-pitoisuus kaksinkertaistuisi pysyvästi)*'
+    )
+
+
+def _reveal_banner(temp):
+    """The drawn member's actual ECS and ESTIMATE_YEAR temperature, shown after the Phase 2 run."""
+    st.success(
+        '🔎 **Paljastus:** tämän kierroksen ilmastomallin '
+        f'ECS oli **{st.session_state["ecs"]:.2f} °C** ja '
+        f'lämpötila {ESTIMATE_YEAR} **{float(temp.sel(timebounds=ESTIMATE_YEAR)):.2f} °C**.'
     )
 
 
@@ -478,6 +508,8 @@ def _emissions_bar_chart(cuts):
     regions = list(REGION_EMISSIONS_2023_GTCO2.keys())
     base    = [REGION_EMISSIONS_2023_GTCO2[r] for r in regions]
     target  = [REGION_EMISSIONS_2023_GTCO2[r] * (1 - cuts[r]) for r in regions]
+    em_2100 = regional_emissions_in_year(cuts, ESTIMATE_YEAR)
+    later   = [em_2100[r] for r in regions]
     colors  = [REGION_COLORS[r] for r in regions]
 
     fig, ax = plt.subplots(figsize=(8, 3.5))
@@ -485,9 +517,11 @@ def _emissions_bar_chart(cuts):
     ax.set_facecolor('#0e1117')
 
     x     = np.arange(len(regions))
-    width = 0.38
-    ax.bar(x - width / 2, base,   width, color=colors, alpha=0.45, label='Päästöt 2023')
-    ax.bar(x + width / 2, target, width, color=colors, alpha=0.90, label=f'Päästöt {CHECKPOINT} (lupaus)')
+    width = 0.27
+    ax.bar(x - width, base,   width, color=colors, alpha=0.30, label='Päästöt 2023')
+    ax.bar(x,         target, width, color=colors, alpha=0.90, label=f'Päästöt {CHECKPOINT} (lupaus)')
+    ax.bar(x + width, later,  width, color=colors, alpha=0.60, hatch='//',
+           label=f'Päästöt {ESTIMATE_YEAR} (sama vuosimuutos jatkuu)')
 
     ax.set_xticks(x)
     ax.set_xticklabels([_plain_name(r) for r in regions], color='white', fontsize=9)
@@ -642,11 +676,29 @@ def _phase1():
     )
     st.pyplot(_emissions_bar_chart(cuts))
 
+    # Estimate over the whole screened ensemble (no member drawn yet): mean and 95 % interval.
+    est_40  = emulate_temperature(cuts, None, CHECKPOINT)
+    est_end = emulate_temperature(cuts, None, ESTIMATE_YEAR)
+    st.info(
+        '**Arvio lämpötilasta** (keskiarvo ja 95 %:n väli ilmastomallien epävarmuudelle):  \n'
+        f'{CHECKPOINT}: **{est_40.mean():.1f} °C** '
+        f'({est_40.quantile(0.025):.1f}–{est_40.quantile(0.975):.1f} °C)  \n'
+        f'{ESTIMATE_YEAR}: **{est_end.mean():.1f} °C** '
+        f'({est_end.quantile(0.025):.1f}–{est_end.quantile(0.975):.1f} °C)'
+    )
+    st.caption(
+        f'Oletus {CHECKPOINT} jälkeen: kunkin alueen päästöt muuttuvat vuosittain yhtä paljon kuin '
+        f'vuosina 2023–{CHECKPOINT} (laskevat korkeintaan nollaan; kasvavat pysyvät ennallaan).'
+    )
+
     if st.button('🔬 Simuloi! →', type='primary'):
         screened = _load_screened()
         cfg_id, ecs = _draw_config(screened)
         st.session_state['config_id'] = cfg_id
         st.session_state['ecs']       = ecs
+        reference = emulate_temperature(cuts, None, ESTIMATE_YEAR)
+        observation = float(reference.loc[cfg_id]) + float(np.random.normal(0.0, ESTIMATE_OBS_SD))
+        st.session_state['estimate_weights'] = posterior_weights(reference, observation, ESTIMATE_OBS_SD)
         # Phase 2 result is stale whenever cuts change and Phase 1 reruns
         st.session_state['temp_phase2'] = None
         # Reset Phase 2 net-zero choices to Maltillinen (index 1) based on new Phase 1 cuts
@@ -670,7 +722,7 @@ def _phase1():
         _obs = _load_gmst()
         obs_2024 = float(_obs.loc[np.floor(_obs['year']) == 2024, 'gmst'].iloc[0])   # IGCC observed 2024
 
-        _ecs_banner()
+        _estimate_banner(cuts, None)
         st.subheader('📊 Simulaatiotulokset')
         components.html(
             _make_temperature_animation(
@@ -700,7 +752,6 @@ def _phase2():
     )
 
     _nav_bar()
-    _ecs_banner()
 
     cuts            = st.session_state['cuts']
     netzero_years   = st.session_state['netzero_years']
@@ -719,6 +770,8 @@ def _phase2():
     st.session_state['netzero_indices'] = netzero_indices
 
     st.pyplot(_emissions_pathway_chart(cuts, netzero_years))
+
+    _estimate_banner(cuts, netzero_years)
 
     if st.button('🔬 Laske huipputulämpötila', type='primary'):
         with st.spinner('Lasketaan FaIR-simulaatio...'):
@@ -758,6 +811,8 @@ def _phase2():
             st.warning('⚠️ Alle 2 °C, mutta yli 1,5 °C')
         else:
             st.error('❌ Ylitetään 2 °C:n Pariisin raja')
+
+        _reveal_banner(temp2)
 
     st.markdown('---')
     if st.button('🔄 Aloita alusta (uusi ilmastomalli)'):

@@ -29,6 +29,7 @@ FAIR_CAL_DIR = _HERE / 'data' / 'fair_calibrate'
 POSTERIOR_PATH = FAIR_CAL_DIR / 'output' / 'posteriors' / 'calibrated_constrained_parameters.csv'
 SPECIES_PROPERTIES_PATH = FAIR_CAL_DIR / 'output' / 'posteriors' / 'species_configs_properties.csv'
 SCREENED_CONFIGS_PATH = _HERE / 'data' / 'screened_configs.csv'
+ESTIMATE_EMULATOR_PATH = _HERE / 'data' / 'estimate_emulator.csv'
 
 # Base SSP for non-CO2 gases and historical CO2.
 # SSP2-4.5 is "middle of the road" — reasonable as current-policy backdrop.
@@ -103,6 +104,23 @@ def annual_mean(temp: xr.DataArray, year: int) -> xr.DataArray:
     return 0.5 * (temp.sel(timebounds=year) + temp.sel(timebounds=year + 1))
 
 
+def extrapolate_after_checkpoint(em_2023: float, em_chk: float, years: np.ndarray) -> np.ndarray:
+    """
+    Regional CO2 emissions (GtCO₂/yr) after CHECKPOINT_YEAR when no net-zero year is chosen
+    ("current policy" extrapolation).
+
+    The absolute annual change of the 2023–CHECKPOINT_YEAR pledge ramp (GtCO₂/yr per year) is
+    continued, so a region that cuts keeps cutting at the same pace until it reaches zero
+    (floor at zero, no negative emissions). A linear rather than a fractional-rate extrapolation
+    is used so that emissions can reach zero. A region whose emissions grow to the checkpoint
+    stays flat afterwards: continuing growth to 2100 would be an extrapolation of BAU growth
+    well beyond the pledge period.
+    """
+    slope = (em_chk - em_2023) / float(CHECKPOINT_YEAR - 2023)
+    slope = min(slope, 0.0)
+    return np.maximum(0.0, em_chk + slope * (np.asarray(years) - CHECKPOINT_YEAR))
+
+
 def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end: int) -> np.ndarray:
     """
     Build a global annual CO2 FFI emission time series (GtCO₂/yr) from 1750 to year_end.
@@ -110,7 +128,9 @@ def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end
     1750–2022: zeros here — caller leaves the SSP2-4.5 historical values intact.
     2023–CHECKPOINT_YEAR: each region ramps linearly from its 2023 baseline to (1−cut)×baseline.
     CHECKPOINT_YEAR–netzero_year: each region ramps linearly from its checkpoint level to zero.
-    After netzero_year (or if no netzero given): held at the checkpoint level.
+    After netzero_year: zero (no CDR).
+    If no netzero year is given for a region: its 2023–CHECKPOINT_YEAR annual change is
+    extrapolated (see extrapolate_after_checkpoint).
 
     Parameters
     ----------
@@ -149,9 +169,81 @@ def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end
             trajectory[mask2] += em_chk * (1.0 - t2)
             # after netzero_year: zero (no CDR)
         else:
-            trajectory[years >= CHECKPOINT_YEAR] += em_chk
+            mask2 = years >= CHECKPOINT_YEAR
+            trajectory[mask2] += extrapolate_after_checkpoint(em_2023, em_chk, years[mask2])
 
     return trajectory
+
+
+def regional_emissions_in_year(cuts: dict, year: int) -> dict:
+    """Extrapolated (no net-zero chosen) emissions of each region in `year` >= CHECKPOINT_YEAR, GtCO₂/yr."""
+    emissions = {}
+    for region, em_2023 in REGION_EMISSIONS_2023_GTCO2.items():
+        em_chk = em_2023 * (1.0 - cuts.get(region, 0.0))
+        emissions[region] = float(extrapolate_after_checkpoint(em_2023, em_chk, [year])[0])
+    return emissions
+
+
+def cumulative_co2(cuts: dict, netzero_years: dict | None, temperature_year: int) -> float:
+    """
+    Cumulative game CO2 FFI emissions (GtCO₂) from 2023 up to and including temperature_year − 1.
+
+    FaIR temperature is on timebounds (1 Jan) and is driven by the emissions of the preceding
+    years, so the temperature of timebound Y depends on the emissions up to year Y − 1.
+    """
+    trajectory = build_co2_fossil_trajectory(cuts, netzero_years, temperature_year)
+    return float(trajectory[2023 - 1750:].sum())
+
+
+@lru_cache(maxsize=1)
+def load_estimate_emulator() -> pd.DataFrame:
+    """
+    Per-member linear emulator written by precompute_estimates.py:
+    T_year = a_year + b_year * (cumulative CO2 2023..year-1 in 1000 GtCO₂), year in (2040, 2100).
+    """
+    if not ESTIMATE_EMULATOR_PATH.exists():
+        raise FileNotFoundError(
+            f'{ESTIMATE_EMULATOR_PATH} not found. Run precompute_estimates.py first.'
+        )
+    return pd.read_csv(ESTIMATE_EMULATOR_PATH, index_col='config_id')
+
+
+def posterior_weights(reference_temperature: pd.Series, observation: float, sigma: float) -> pd.Series:
+    """
+    Weights of the screened members after a noisy observation of the drawn member.
+
+    The player is told only `observation` = (drawn member's reference temperature) + N(0, sigma).
+    With the member drawn uniformly from the screened ensemble, Bayes' rule gives each member the
+    weight exp(-(T_ref,i - observation)^2 / (2 sigma^2)). Weighted means and intervals of any
+    member property (temperature under other decisions, ECS) are then calibrated, and quantities
+    that correlate with the reference temperature (ECS) narrow consistently.
+    """
+    weights = np.exp(-0.5 * ((reference_temperature - observation) / sigma) ** 2)
+    return weights / weights.sum()
+
+
+def weighted_mean_interval(values: pd.Series, weights: pd.Series, level: float = 0.95):
+    """Weighted mean and central `level` interval of values (aligned to weights' index)."""
+    values = values.loc[weights.index]
+    order = np.argsort(values.values)
+    sorted_values = values.values[order]
+    sorted_weights = weights.values[order]
+    # Mid-point cumulative weights, so that equal weights reproduce the usual interpolated quantile.
+    cumulative = (np.cumsum(sorted_weights) - 0.5 * sorted_weights) / sorted_weights.sum()
+    lower, upper = (1.0 - level) / 2.0, 1.0 - (1.0 - level) / 2.0
+    interval = np.interp([lower, upper], cumulative, sorted_values)
+    mean = float(np.average(values.values, weights=weights.values))
+    return mean, float(interval[0]), float(interval[1])
+
+
+def emulate_temperature(cuts: dict, netzero_years: dict | None, year: int) -> pd.Series:
+    """
+    Fast (no FaIR) temperature estimate (°C re. 1850–1900, timebound `year`) for every
+    screened member, indexed by config_id.
+    """
+    emulator = load_estimate_emulator()
+    cum_tco2 = cumulative_co2(cuts, netzero_years, year) / 1000.0
+    return emulator[f'a_{year}'] + emulator[f'b_{year}'] * cum_tco2
 
 
 def setup_fair(config_ids, year_end: int, base_ssp: str = BASE_SSP) -> FAIR:
@@ -234,7 +326,8 @@ def run_fair_game(cuts: dict, netzero_years: dict | None, config_id: int) -> xr.
     cuts : dict
         {region: fraction_cut} where fraction_cut ∈ [0, 1].
     netzero_years : dict or None
-        {region: year} for Phase 2 net-zero dates; None holds checkpoint levels flat.
+        {region: year} for Phase 2 net-zero dates; None extrapolates each region's
+        2023–CHECKPOINT_YEAR annual change (see extrapolate_after_checkpoint).
     config_id : int
         Index value from data/screened_configs.csv / the calibrated posterior.
 
