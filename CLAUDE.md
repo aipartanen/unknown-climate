@@ -20,8 +20,7 @@ cloud deployment on Streamlit Community Cloud. Specifically:
 - No secrets or credentials hardcoded — use `python-dotenv` / environment variables
 - The app should start cleanly with `streamlit run app.py` from a fresh clone
 
-The app is not yet ready for release. The plan for release is saved at
-`.claude/plans/what-are-my-options-serene-origami.md`.
+The app is not yet ready for release.
 
 ## Pipeline
 

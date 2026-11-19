@@ -883,21 +883,24 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
             .properties(height=440, padding={'left': 5, 'top': 10, 'bottom': 5, 'right': 210}))
 
 
-def _show_temperature_animation(key, **chart_kwargs):
+def _show_temperature_animation(key, drawn_until=ANIM_START - 1, **chart_kwargs):
     """
     Show the temperature chart. The first time `key` is shown the model line is drawn year by
     year (about ANIM_SECONDS; years are grouped beyond ANIM_MAX_FRAMES frames), afterwards the
     final chart is shown directly. A button replays the animation.
+
+    drawn_until : last model year already drawn in the first frame. The default shows the
+                  observations only; Phase 2 passes CHECKPOINT, since 2026-2040 was seen in Phase 1.
     """
     placeholder = st.empty()
     played = st.session_state['animations_played']
     temp_da, year_end = chart_kwargs['temp_da'], chart_kwargs['year_end']
     if key not in played:
-        years = [int(y) for y in temp_da.year.values if ANIM_START <= y <= year_end]
+        years = [int(y) for y in temp_da.year.values if drawn_until < y <= year_end]
         step = max(1, int(np.ceil(len(years) / ANIM_MAX_FRAMES)))
-        # Start from a frame with the observations only, so the step from the last observation
-        # to the first model year is drawn as an animation step like the later years
-        frames = [ANIM_START - 1] + years[::step]
+        # Start from a frame with the line drawn up to drawn_until (by default observations
+        # only, so the step from the last observation to the first model year is animated too)
+        frames = [drawn_until] + years[::step]
         for upto_year in frames:
             placeholder.altair_chart(_temperature_chart(upto_year=upto_year, final=False, **chart_kwargs),
                                      width='stretch')
@@ -1306,7 +1309,7 @@ def _screen_phase2():
     _show_temperature_animation(
         f'phase2-{st.session_state["config_id"]}-{netzero_key}',
         temp_da=temp2, year_start=1900, year_end=display_end,
-        show_peak=True,
+        show_peak=True, drawn_until=CHECKPOINT,
     )
 
     if peak_temp < PARIS_15:
