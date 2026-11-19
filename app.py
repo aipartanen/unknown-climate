@@ -19,11 +19,10 @@ import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.animation as mpl_anim
 from matplotlib.transforms import blended_transform_factory
 import sys
 import streamlit as st
-import streamlit.components.v1 as components
+import altair as alt
 
 # Pass --sliders on the command line to enable free continuous sliders
 # instead of the default radio buttons.  Useful for instructor demos.
@@ -48,7 +47,11 @@ PARIS_20     = 2.0
 CHECKPOINT      = 2040   # Phase 1 pledge year
 ANIM_START      = 2026   # first year of the simulated line, animated year by year. The observed
                          # record (IGCC) ends with 2025, so the model is drawn only after it.
-ANIM_INTERVAL   = 80     # ms per animation frame (increase to slow down)
+ANIM_SECONDS    = 5.0    # duration of the year-by-year line animation (increase to slow down)
+ANIM_MAX_FRAMES = 60     # chart updates sent to the browser; years are grouped beyond this
+OBS_COLOR       = '#8C8C8C'   # observed GMST: mid-grey reads on light and dark themes
+MODEL_COLOR     = '#5A84E2'
+DECADE_COLOR    = '#D9961A'   # darker than the old yellow so it reads on white too
 ESTIMATE_YEAR   = 2100   # year of the warming estimate shown to the players
 
 # HOW THE ESTIMATES ARE UPDATED
@@ -302,6 +305,7 @@ def _init_state():
         # Set at the Phase 2 simulation
         'temp_phase2':     None,
         'phase2_netzero_used': None, # net-zero years of temp_phase2, to detect stale results
+        'animations_played': set(),  # chart keys whose animation has been shown once
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -610,153 +614,161 @@ def _nav_bar():
     st.markdown('---')
 
 
-def _make_temperature_animation(temp_da, year_start, year_end,
-                                 highlight_year=None, show_peak=False,
-                                 phase1_da=None, inset_metrics=None, decade=None):
+def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
+                       phase1_da=None, highlight_year=None, show_peak=False, decade=None):
     """
-    Temperature trajectory: observations (static, up to 2025) followed by the simulated
-    line from ANIM_START onward, drawn year-by-year. The simulation is not shown over the
-    observed period. Returns an HTML string for components.html().
-
-    Both series are annual means plotted at mid-year (Y + 0.5), as the IGCC file stamps them.
+    Altair chart of the temperature trajectory: observations (up to 2025) and the simulated
+    annual means from ANIM_START up to upto_year (the animation reveals the line year by year).
+    Both are annual means plotted at mid-year (Y + 0.5), as the IGCC file stamps them.
+    The axes are fixed from the full series, so they do not jump between animation frames.
+    Colours are chosen to read on both the light and the dark Streamlit theme.
 
     temp_da        : xr.DataArray dim 'year' (annual means, see annual_series), single config
-    phase1_da      : if given, draw Phase 1 trajectory as grey dashed line (static)
-    highlight_year : dotted vertical line (Phase 1: CHECKPOINT; Phase 2: peak year)
-    show_peak      : annotate peak with arrow on final animation frame
-    inset_metrics  : list of (label, value_str) shown as text box on final frame
-    decade         : (mean, lo, hi) of the CENTRED_WINDOW mean, drawn on the final frame as a
-                     bar over the decade: solid for the known years, dashed and shaded for the
-                     projected ones. Extends the x axis to the end of the decade.
+    phase1_da      : if given, the Phase 1 trajectory as a grey dashed line
+    highlight_year : dotted vertical line (Phase 1: CHECKPOINT)
+    final          : add the summary marks: the step from the last observation to the first
+                     model year, the peak (show_peak) and the decade bar (decade)
+    decade         : (mean, lo, hi) of the CENTRED_WINDOW mean: solid over the known years,
+                     dashed and shaded over the projected ones. Extends the x axis.
     """
     gmst = _load_gmst()
+    obs = gmst[(gmst['year'] >= year_start) & (gmst['year'] <= ANIM_START)]
+    years = temp_da.year.values
+    future = (years >= ANIM_START) & (years <= year_end)
+    yr_fut = years[future]
+    t_fut = temp_da.values[future]
 
-    fig, ax = plt.subplots(figsize=(9, 4))
-    fig.patch.set_facecolor('#0e1117')
-    ax.set_facecolor('#0e1117')
-
-    years  = temp_da.year.values
-    mask   = (years >= year_start) & (years <= year_end)
-    yr     = years[mask]
-    t_vals = temp_da.isel(year=mask).values
-
-    # Only the part after the observed record is shown
-    fut_mask = yr >= ANIM_START
-    yr_fut   = yr[fut_mask]
-    t_fut    = t_vals[fut_mask]
-    x_fut    = yr_fut + 0.5    # mid-year, like the observations
-
-    obs_mask = (gmst['year'] >= year_start) & (gmst['year'] <= min(ANIM_START, year_end))
-
-    # Fix axis limits before drawing so text placements are stable
-    y_min = min(float(gmst.loc[obs_mask, 'gmst'].min()), 0.0) - 0.15
-    y_max = max(float(t_fut.max()), float(gmst.loc[obs_mask, 'gmst'].max())) + 0.45
     x_end = year_end + 1
+    y_min = min(float(obs['gmst'].min()), 0.0) - 0.15
+    y_max = max(float(t_fut.max()), float(obs['gmst'].max())) + 0.45
     if decade is not None:
-        y_max = max(y_max, decade[2] + 0.3)
         x_end = max(x_end, CENTRED_WINDOW[1] + 2)
-    ax.set_xlim(year_start, x_end)
-    ax.set_ylim(y_min, y_max)
+        y_max = max(y_max, decade[2] + 0.3)
+    x_scale = alt.Scale(domain=[year_start, x_end], nice=False, zero=False)
+    y_scale = alt.Scale(domain=[y_min, y_max], nice=False, zero=False)
+    x_enc = alt.X('x:Q', scale=x_scale, axis=alt.Axis(title='Vuosi', format='d'))
+    y_enc = alt.Y('T:Q', scale=y_scale, axis=alt.Axis(title='Lämpötila-anomalia (°C)'))
 
-    # --- static elements ---
+    # --- lines: observations, (Phase 1), model ---
+    shown = yr_fut <= upto_year
+    model = pd.DataFrame({'x': yr_fut[shown] + 0.5, 'T': t_fut[shown]})
+    if final:
+        # The step from the last observed year to the first model year is drawn only on the
+        # final frame, after the rest of the line (plot only, the results are not modified).
+        first = pd.DataFrame({'x': [float(obs['year'].iloc[-1])], 'T': [float(obs['gmst'].iloc[-1])]})
+        model = pd.concat([first, model], ignore_index=True)
+    model['sarja'] = 'Ilmastomalli'
+    observed = pd.DataFrame({'x': obs['year'].values, 'T': obs['gmst'].values, 'sarja': 'Havaittu'})
+    parts = [observed, model]
+    series, colors, dashes = ['Havaittu', 'Ilmastomalli'], [OBS_COLOR, MODEL_COLOR], [[1, 0], [1, 0]]
     if phase1_da is not None:
-        yr1 = phase1_da.year.values
-        m1  = (yr1 >= ANIM_START) & (yr1 <= CHECKPOINT)
-        ax.plot(yr1[m1] + 0.5, phase1_da.isel(year=m1).values,
-                color='#888888', linewidth=2.5, linestyle='--', label='Vaihe 1')
+        years1 = phase1_da.year.values
+        keep1 = (years1 >= ANIM_START) & (years1 <= CHECKPOINT)
+        parts.append(pd.DataFrame({'x': years1[keep1] + 0.5, 'T': phase1_da.values[keep1],
+                                   'sarja': 'Vaihe 1'}))
+        series.append('Vaihe 1')
+        colors.append('#9AA0A6')
+        dashes.append([6, 4])
+    lines = pd.concat(parts, ignore_index=True)
+    lines['vuosi'] = np.floor(lines['x']).astype(int)    # calendar year for the tooltip
+    layers = [
+        alt.Chart(lines).mark_line(strokeWidth=2.2, clip=True).encode(
+            x=x_enc, y=y_enc, detail='sarja:N', order='x:Q',
+            color=alt.Color('sarja:N', scale=alt.Scale(domain=series, range=colors),
+                            legend=alt.Legend(title=None, orient='bottom-right')),
+            strokeDash=alt.StrokeDash('sarja:N', scale=alt.Scale(domain=series, range=dashes),
+                                      legend=None),
+            tooltip=[alt.Tooltip('sarja:N', title='Sarja'),
+                     alt.Tooltip('vuosi:Q', title='Vuosi', format='d'),
+                     alt.Tooltip('T:Q', title='°C', format='.2f')],
+        )
+    ]
 
-    ax.plot(gmst.loc[obs_mask, 'year'], gmst.loc[obs_mask, 'gmst'],
-            color='white', linewidth=1.5, label='Havaittu')
-
-    ax.axhline(PARIS_15, color='#65C06C', linewidth=1.5, linestyle='--')
-    ax.axhline(PARIS_20, color='#FFA73E', linewidth=1.5, linestyle='--')
-    ax.text(year_start + 1, PARIS_15 + 0.04, '1,5 °C (Pariisin tavoite)',
-            color='#65C06C', fontsize=9)
-    ax.text(year_start + 1, PARIS_20 + 0.04, '2,0 °C (Pariisin raja)',
-            color='#FFA73E', fontsize=9)
-
-    # Right-side impact annotations: one label per warming threshold.
-    # Uses a blended transform so x is in axes fraction (outside right edge)
-    # and y is in data coordinates (matches the temperature scale).
-    fig.subplots_adjust(right=0.72)
-    _rtrans = blended_transform_factory(ax.transAxes, ax.transData)
-    for t_ann, col_ann, lbl_ann in TEMP_ANNOTATIONS:
-        if t_ann > y_max + 0.15:
-            continue                          # off the top of the chart
-        if t_ann > PARIS_20:                  # 1.5 and 2.0 already have axhlines above
-            ax.axhline(t_ann, color=col_ann, linewidth=1.0,
-                       linestyle='--', alpha=0.50)
-        ax.text(1.03, t_ann, lbl_ann,
-                transform=_rtrans,
-                color=col_ann, fontsize=7, va='center',
-                linespacing=1.55, clip_on=False)
+    # --- warming levels: Paris lines labelled on the left, impacts on the right ---
+    levels = pd.DataFrame([{'T': t, 'väri': color, 'vaikutus': label}
+                           for t, color, label in TEMP_ANNOTATIONS if t <= y_max])
+    paris = pd.DataFrame([{'T': PARIS_15, 'väri': '#65C06C', 'nimi': '1,5 °C (Pariisin tavoite)'},
+                          {'T': PARIS_20, 'väri': '#FFA73E', 'nimi': '2,0 °C (Pariisin raja)'}])
+    layers += [
+        alt.Chart(levels).mark_rule(strokeDash=[5, 4], strokeWidth=1.3).encode(
+            y=alt.Y('T:Q', scale=y_scale), color=alt.Color('väri:N', scale=None)),
+        # Impact labels in the right margin (outside the plot, see the padding below)
+        alt.Chart(levels).mark_text(align='left', baseline='middle', dx=8, fontSize=11,
+                                    lineBreak='\n').encode(
+            x=alt.datum(x_end), y=alt.Y('T:Q', scale=y_scale),
+            text='vaikutus:N', color=alt.Color('väri:N', scale=None)),
+        alt.Chart(paris).mark_text(align='left', baseline='bottom', dx=4, dy=-3, fontSize=11,
+                                   fontWeight='bold').encode(
+            x=alt.datum(year_start), y=alt.Y('T:Q', scale=y_scale),
+            text='nimi:N', color=alt.Color('väri:N', scale=None)),
+    ]
 
     if highlight_year is not None:
-        ax.axvline(highlight_year + 0.5, color='white', linewidth=1.2, linestyle=':')
-        if not show_peak:
-            ax.text(highlight_year + 1.5, y_min + 0.05, str(highlight_year),
-                    color='white', fontsize=9)
+        mark = pd.DataFrame({'x': [highlight_year + 0.5], 'nimi': [str(highlight_year)]})
+        layers += [
+            alt.Chart(mark).mark_rule(strokeDash=[2, 3], color=OBS_COLOR).encode(x=x_enc),
+            alt.Chart(mark).mark_text(align='left', baseline='bottom', dx=4, color=OBS_COLOR).encode(
+                x=x_enc, y=alt.datum(y_min), text='nimi:N'),
+        ]
 
-    ax.set_xlabel('Vuosi', color='white')
-    ax.set_ylabel('Lämpötila-anomalia (°C)', color='white')
-    ax.tick_params(colors='white')
-    for spine in ax.spines.values():
-        spine.set_edgecolor('#444444')
+    if final and show_peak:
+        after = temp_da.sel(year=temp_da.year > CHECKPOINT)
+        peak_temp = float(after.max())
+        peak_year = int(after.year.values[after.values.argmax()])
+        peak = pd.DataFrame({'x': [peak_year + 0.5], 'T': [peak_temp],
+                             'nimi': [f'Huippu: {peak_temp:.2f} °C ({peak_year})']})
+        layers += [
+            alt.Chart(peak).mark_rule(strokeDash=[2, 3], color=OBS_COLOR).encode(x=x_enc),
+            alt.Chart(peak).mark_point(size=90, filled=True, color=MODEL_COLOR).encode(x=x_enc, y=y_enc),
+            alt.Chart(peak).mark_text(align='left', dx=8, dy=-10, fontSize=13, fontWeight='bold',
+                                      color=MODEL_COLOR).encode(x=x_enc, y=y_enc, text='nimi:N'),
+        ]
 
-    # Animated future line (empty at start)
-    model_line, = ax.plot([], [], color='#5A84E2', linewidth=2.5, label='Ilmastomalli')
-    ax.legend(facecolor='#1e2130', labelcolor='white', fontsize=9)
+    if final and decade is not None:
+        # The decade covers annual years CENTRED_WINDOW, i.e. x from its first year to one past
+        # its last; the years after OBS_WINDOW[1] are not known yet in 2040 (projected).
+        mean, lo, hi = decade
+        x0, x_known, x1 = CENTRED_WINDOW[0], OBS_WINDOW[1] + 1, CENTRED_WINDOW[1] + 1
+        band = pd.DataFrame({'x': [x_known], 'x2': [x1], 'T': [lo], 'T2': [hi]})
+        known = pd.DataFrame({'x': [x0], 'x2': [x_known], 'T': [mean]})
+        projected = pd.DataFrame({'x': [x_known], 'x2': [x1], 'T': [mean]})
+        layers += [
+            alt.Chart(band).mark_rect(opacity=0.25, color=DECADE_COLOR).encode(
+                x=x_enc, x2='x2:Q', y=y_enc, y2='T2:Q'),
+            alt.Chart(known).mark_rule(strokeWidth=4, color=DECADE_COLOR).encode(
+                x=x_enc, x2='x2:Q', y=y_enc),
+            alt.Chart(projected).mark_rule(strokeWidth=4, strokeDash=[5, 3], color=DECADE_COLOR).encode(
+                x=x_enc, x2='x2:Q', y=y_enc),
+        ]
 
-    # The step from the last observed point (2025) to the first modelled point is drawn only
-    # on the final frame, after the rest of the simulated line. Plot only: the FaIR results
-    # themselves are not modified.
-    jump_line, = ax.plot([], [], color='#5A84E2', linewidth=2.5)
-    jump_x = [gmst.loc[obs_mask, 'year'].iloc[-1], x_fut[0]]
-    jump_y = [gmst.loc[obs_mask, 'gmst'].iloc[-1], t_fut[0]]
+    # Right padding holds the impact labels (the decade value is shown as a metric below)
+    return (alt.layer(*layers).resolve_scale(color='independent')
+            .properties(height=440, padding={'left': 5, 'top': 10, 'bottom': 5, 'right': 210}))
 
-    n_frames = len(yr_fut)
 
-    def update(frame):
-        model_line.set_data(x_fut[:frame + 1], t_fut[:frame + 1])
-        # On the final frame, add annotations that summarise the result
-        if frame == n_frames - 1:
-            jump_line.set_data(jump_x, jump_y)
-            if decade is not None:
-                # The decade covers annual years CENTRED_WINDOW, i.e. x from its first year to
-                # one past its last; the years after OBS_WINDOW[1] are not yet known.
-                mean, lo, hi = decade
-                x0, x_known, x1 = CENTRED_WINDOW[0], OBS_WINDOW[1] + 1, CENTRED_WINDOW[1] + 1
-                ax.fill_between([x_known, x1], lo, hi, color='#FFD54A', alpha=0.20, linewidth=0)
-                ax.plot([x0, x_known], [mean, mean], color='#FFD54A', linewidth=3)
-                ax.plot([x_known, x1], [mean, mean], color='#FFD54A', linewidth=3, linestyle='--')
-                ax.text(x0, mean + 0.08,
-                        f'{CENTRED_WINDOW[0]}–{CENTRED_WINDOW[1]} keskiarvo {mean:.2f} °C',
-                        color='#FFD54A', fontsize=9, ha='left')
-            if show_peak:
-                peak_temp = float(t_vals.max())
-                peak_yr   = int(yr[t_vals.argmax()])
-                ax.annotate(
-                    f'Huippu: {peak_temp:.2f} °C ({peak_yr})',
-                    xy=(peak_yr + 0.5, peak_temp),
-                    xytext=(peak_yr + 5.5, peak_temp + 0.1),
-                    color='white', fontsize=10,
-                    arrowprops=dict(arrowstyle='->', color='white', lw=1.5),
-                )
-            if inset_metrics:
-                lines = '\n'.join(f'{label}:  {val}' for label, val in inset_metrics)
-                ax.text(0.02, 0.02, lines,
-                        transform=ax.transAxes,
-                        color='white', fontsize=10, va='bottom', ha='left',
-                        bbox=dict(facecolor='#1e2130', edgecolor='#555555',
-                                  boxstyle='round,pad=0.5', alpha=0.9))
-
-    anim = mpl_anim.FuncAnimation(
-        fig, update, frames=n_frames,
-        interval=ANIM_INTERVAL, blit=False, repeat=False,
-    )
-    html = anim.to_jshtml()
-    plt.close(fig)
-    return html
+def _show_temperature_animation(key, **chart_kwargs):
+    """
+    Show the temperature chart. The first time `key` is shown the model line is drawn year by
+    year (about ANIM_SECONDS; years are grouped beyond ANIM_MAX_FRAMES frames), afterwards the
+    final chart is shown directly. A button replays the animation.
+    """
+    placeholder = st.empty()
+    played = st.session_state['animations_played']
+    temp_da, year_end = chart_kwargs['temp_da'], chart_kwargs['year_end']
+    if key not in played:
+        years = [int(y) for y in temp_da.year.values if ANIM_START <= y <= year_end]
+        step = max(1, int(np.ceil(len(years) / ANIM_MAX_FRAMES)))
+        frames = years[::step]
+        for upto_year in frames:
+            placeholder.altair_chart(_temperature_chart(upto_year=upto_year, final=False, **chart_kwargs),
+                                     width='stretch')
+            time.sleep(ANIM_SECONDS / len(frames))
+        played.add(key)
+    placeholder.altair_chart(_temperature_chart(upto_year=year_end, final=True, **chart_kwargs),
+                             width='stretch')
+    if st.button('▶ Toista animaatio', key=f'replay_{key}'):
+        played.discard(key)
+        st.rerun()
 
 
 def _emissions_bar_chart(cuts):
@@ -1030,20 +1042,17 @@ def _screen_sim1():
     gmst = _load_gmst()
     obs_last = float(gmst.loc[np.floor(gmst['year']) == ANIM_START - 1, 'gmst'].iloc[0])
 
-    components.html(
-        _make_temperature_animation(
-            temp, year_start=1900, year_end=CHECKPOINT,
-            highlight_year=CHECKPOINT,
-            inset_metrics=[
-                (f'Havaittu {ANIM_START - 1}', f'+{obs_last:.2f} °C'),
-                (f'Vuosi {CHECKPOINT}', f'+{t_single:.2f} °C'),
-                (f'Keskiarvo {CENTRED_WINDOW[0]}–{CENTRED_WINDOW[1]}',
-                 f'+{decade_mean:.2f} °C ({decade_lo:.2f}–{decade_hi:.2f})'),
-            ],
-            decade=st.session_state['centred_decade'],
-        ),
-        height=520,
+    _show_temperature_animation(
+        f'sim1-{st.session_state["config_id"]}',
+        temp_da=temp, year_start=1900, year_end=CHECKPOINT,
+        highlight_year=CHECKPOINT, decade=st.session_state['centred_decade'],
     )
+    col_obs, col_single, col_decade = st.columns(3)
+    col_obs.metric(f'Havaittu {ANIM_START - 1}', f'+{obs_last:.2f} °C')
+    col_single.metric(f'Vuosi {CHECKPOINT}', f'+{t_single:.2f} °C')
+    col_decade.metric(f'Keskiarvo {CENTRED_WINDOW[0]}–{CENTRED_WINDOW[1]}', f'+{decade_mean:.2f} °C',
+                      help=f'95 %:n väli {decade_lo:.2f}–{decade_hi:.2f} °C, koska vuodet '
+                           f'{OBS_WINDOW[1] + 1}–{CENTRED_WINDOW[1]} on arvioitu')
 
     # Paris thresholds refer to long-term warming, so the verdict uses the decade centred on 2040.
     if decade_mean < PARIS_15:
@@ -1209,14 +1218,11 @@ def _screen_phase2():
     display_end = min(peak_yr + 30, sim_end)
 
     st.subheader('📊 Simulaatiotulokset')
-    components.html(
-        _make_temperature_animation(
-            temp2, year_start=1900, year_end=display_end,
-            highlight_year=peak_yr,
-            show_peak=True,
-            phase1_da=temp1,
-        ),
-        height=520,
+    netzero_key = '-'.join(str(netzero_years[r]) for r in REGION_EMISSIONS_BASE_GTCO2)
+    _show_temperature_animation(
+        f'phase2-{st.session_state["config_id"]}-{netzero_key}',
+        temp_da=temp2, year_start=1900, year_end=display_end,
+        show_peak=True, phase1_da=temp1,
     )
 
     if peak_temp < PARIS_15:
