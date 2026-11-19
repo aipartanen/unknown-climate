@@ -579,6 +579,14 @@ def _interval_width_change(values, stages, old, new):
     return hi_old - lo_old, hi_new - lo_new
 
 
+def _range_change_text(old_width, new_width):
+    """'narrowed 3.7 → 3.0 °C (19%)' or 'widened 3.7 → 3.9 °C' (no negative narrowing)."""
+    if new_width > old_width:
+        return t('range_widened', old=_num(old_width, 1), new=_num(new_width, 1))
+    return t('range_narrowed', old=_num(old_width, 1), new=_num(new_width, 1),
+             pct=f'{(1 - new_width / old_width) * 100:.0f}')
+
+
 def _lottery_html(n_cells, highlight):
     """Grid of n_cells anonymous 'Earths' with one highlighted (positions carry no information)."""
     cells = []
@@ -1169,12 +1177,20 @@ def _screen_obs2040():
     ecs_old, ecs_new = _interval_width_change(ecs, stages, 'prior', 'obs2040')
     t_old, t_new = _interval_width_change(temperature, stages, 'prior', 'obs2040')
     ecs_narrowing = 1 - ecs_new / ecs_old
-    message = t('ob_narrow', ecs_old=_num(ecs_old, 1), ecs_new=_num(ecs_new, 1),
-                ecs_pct=f'{ecs_narrowing * 100:.0f}', year=ESTIMATE_YEAR,
-                t_old=_num(t_old, 1), t_new=_num(t_new, 1), t_pct=f'{(1 - t_new / t_old) * 100:.0f}')
+    message = t('ob_ranges', ecs_change=_range_change_text(ecs_old, ecs_new), year=ESTIMATE_YEAR,
+                t_change=_range_change_text(t_old, t_new))
     # Typically (median over simulated games) the ECS interval narrows by only ~20 %; it narrows
     # much more when the drawn member is in a tail of the ensemble. Describe the actual case.
-    if ecs_narrowing < 0.3:
+    # The interval can also widen: the ECS distribution is right-skewed, so an observation that
+    # favours high-ECS members moves weight into the long, sparse upper tail. The update then
+    # shifts the estimate rather than sharpening it, which is shown as a shift of the mean.
+    if ecs_new > ecs_old:
+        ecs_mean_old = weighted_mean_interval(ecs, stages['prior'])[0]
+        ecs_mean_new = weighted_mean_interval(ecs, stages['obs2040'])[0]
+        direction = t('ob_higher') if ecs_mean_new > ecs_mean_old else t('ob_lower')
+        message += t('ob_widened', direction=direction, old=_num(ecs_mean_old, 1),
+                     new=_num(ecs_mean_new, 1))
+    elif ecs_narrowing < 0.3:
         message += t('ob_small')
     else:
         prior_mean = _window_mean_members(st.session_state['cuts'], OBS_WINDOW).mean()
@@ -1196,9 +1212,8 @@ def _screen_research():
     ecs = _load_screened()['ECS']
     ecs_old, ecs_new = _interval_width_change(ecs, stages, 'prior', 'research')
     t_old, t_new = _interval_width_change(temperature, stages, 'prior', 'research')
-    st.info(t('re_narrow', ecs_old=_num(ecs_old, 1), ecs_new=_num(ecs_new, 1),
-              ecs_pct=f'{(1 - ecs_new / ecs_old) * 100:.0f}', year=ESTIMATE_YEAR,
-              t_old=_num(t_old, 1), t_new=_num(t_new, 1), t_pct=f'{(1 - t_new / t_old) * 100:.0f}'))
+    st.info(t('re_ranges', ecs_change=_range_change_text(ecs_old, ecs_new), year=ESTIMATE_YEAR,
+              t_change=_range_change_text(t_old, t_new)))
     with st.expander(t('re_expander_title')):
         st.markdown(t('re_expander_body', year=ESTIMATE_YEAR))
     if st.button(t('re_next'), type='primary'):

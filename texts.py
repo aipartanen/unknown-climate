@@ -291,12 +291,28 @@ TEXTS = {
               '(measurement uncertainty ±{err} °C).  \n'
               'Climates whose warming fits this measurement become more likely.',
     },
-    'ob_narrow': {
-        'fi': 'Ilmastoherkkyyden 95 %:n väli kapeni **{ecs_old} → {ecs_new} °C** ({ecs_pct} %), '
-              'vuoden {year} lämpenemisen **{t_old} → {t_new} °C** ({t_pct} %). ',
-        'en': 'The 95% range of climate sensitivity narrowed **{ecs_old} → {ecs_new} °C** ({ecs_pct}%), '
-              'that of warming in {year} **{t_old} → {t_new} °C** ({t_pct}%). ',
+    'range_narrowed': {
+        'fi': 'kapeni **{old} → {new} °C** ({pct} %)',
+        'en': 'narrowed **{old} → {new} °C** ({pct}%)',
     },
+    'range_widened': {
+        'fi': 'leveni **{old} → {new} °C**',
+        'en': 'widened **{old} → {new} °C**',
+    },
+    'ob_ranges': {
+        'fi': 'Ilmastoherkkyyden 95 %:n väli {ecs_change}, vuoden {year} lämpenemisen {t_change}. ',
+        'en': 'The 95% range of climate sensitivity {ecs_change}, that of warming in {year} {t_change}. ',
+    },
+    'ob_widened': {
+        'fi': 'Havainto ei kaventanut väliä vaan siirsi arviota kohti {direction} ilmastoherkkyyttä '
+              '(paras arvio {old} → {new} °C). Ilmastoherkkyyden jakauma on vino, joten väli voi '
+              'silloin jopa levetä.',
+        'en': 'The observation did not narrow the range but moved the estimate towards {direction} '
+              'climate sensitivity (best estimate {old} → {new} °C). The distribution of climate '
+              'sensitivity is lopsided, so the range can even widen when this happens.',
+    },
+    'ob_higher': {'fi': 'suurempaa', 'en': 'higher'},
+    'ob_lower': {'fi': 'pienempää', 'en': 'lower'},
     'ob_small': {
         'fi': 'Arvio tarkentui – mutta vähemmän kuin voisi odottaa!',
         'en': 'The estimate became sharper – but less than you might expect!',
@@ -344,13 +360,11 @@ TEXTS = {
               'behaviour of clouds. A new study estimates the sensitivity of our climate to be '
               '**{clue} °C ± {err} °C** (95% range).',
     },
-    're_narrow': {
-        'fi': 'Alkuarvioon verrattuna ilmastoherkkyyden 95 %:n väli kapeni **{ecs_old} → '
-              '{ecs_new} °C** ({ecs_pct} %), vuoden {year} lämpenemisen **{t_old} → {t_new} °C** '
-              '({t_pct} %).',
-        'en': 'Compared with the initial estimate, the 95% range of climate sensitivity narrowed '
-              '**{ecs_old} → {ecs_new} °C** ({ecs_pct}%), that of warming in {year} '
-              '**{t_old} → {t_new} °C** ({t_pct}%).',
+    're_ranges': {
+        'fi': 'Alkuarvioon verrattuna ilmastoherkkyyden 95 %:n väli {ecs_change}, vuoden {year} '
+              'lämpenemisen {t_change}.',
+        'en': 'Compared with the initial estimate, the 95% range of climate sensitivity {ecs_change}, '
+              'that of warming in {year} {t_change}.',
     },
     're_expander_title': {
         'fi': 'Miksi lämpenemisen arvio ei tarkentunut yhtä paljon kuin ilmastoherkkyyden?',
