@@ -16,7 +16,7 @@ For every screened member i and target year Y in (2040, 2100):
     T_i(Y) = a_i,Y + b_i,Y * C_Y
 
 where T_i(Y) is the FaIR temperature (timebound Y, °C re. 1850-1900, the seeded stochastic run
-used in the game) and C_Y is the cumulative game CO2 FFI emission 2023..Y-1 in 1000 GtCO2.
+used in the game) and C_Y is the cumulative game CO2 FFI emission FIRST_OVERRIDE_YEAR (2023)..Y-1 in 1000 GtCO2.
 
 WHY LINEAR IN CUMULATIVE CO2
 ----------------------------
@@ -55,7 +55,7 @@ OUT_FIG = fr._HERE / 'figures' / 'estimate_emulator_diagnostics.png'
 
 
 def draw_decisions(rng, with_netzero: bool):
-    regions = list(fr.REGION_EMISSIONS_2023_GTCO2)
+    regions = list(fr.REGION_EMISSIONS_BASE_GTCO2)
     cuts = {r: rng.uniform(*CUT_RANGE) for r in regions}
     if not with_netzero:
         return cuts, None
@@ -68,7 +68,7 @@ def run_members(cuts, netzero_years, config_ids):
     f = fr.setup_fair(config_ids, RUN_END)
     trajectory = fr.build_co2_fossil_trajectory(cuts, netzero_years, RUN_END)
     co2_idx = list(f.emissions.specie.values).index('CO2 FFI')
-    f.emissions.values[2023 - 1750:, 0, :, co2_idx] = trajectory[2023 - 1750:, None]
+    f.emissions.values[fr.FIRST_OVERRIDE_YEAR - 1750:, 0, :, co2_idx] = trajectory[fr.FIRST_OVERRIDE_YEAR - 1750:, None]
     f.run()
     temp = f.temperature.sel(layer=0, scenario='game')
     temp = fr.rebase_to_1850_1900(temp)
@@ -123,7 +123,7 @@ def main(n_each=N_SCENARIOS_EACH, config_ids=None, write=True):
         xs = np.linspace(x.min(), x.max(), 20)
         for i in range(0, len(config_ids), max(1, len(config_ids) // 40)):
             ax.plot(xs, intercept[i] + slope[i] * xs, color='k', alpha=0.15, linewidth=0.7)
-        ax.set_xlabel(f'Cumulative CO2 2023..{y - 1} (1000 GtCO2)')
+        ax.set_xlabel(f'Cumulative CO2 {fr.FIRST_OVERRIDE_YEAR}..{y - 1} (1000 GtCO2)')
         ax.set_ylabel(f'T {y} (°C)')
         ax.set_title(f'T{y}: ~40 members, FaIR (dots) and linear fit (lines)')
         ax = axes[1, col]

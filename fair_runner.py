@@ -8,8 +8,10 @@ vendored in data/fair_calibrate/ (see the README there).
 
 A single config is drawn randomly from a pre-screened shortlist
 (data/screened_configs.csv, produced by precompute_configs.py).
-CO2 FFI emissions 2023+ are replaced by the user-defined game trajectory.
-All other species follow SSP2-4.5 from the harmonized emissions NetCDF.
+CO2 FFI (fossil fuel and industry) emissions 2023+ are replaced by the game trajectory: observed
+(GCB) global totals for 2023-24, then the user-defined regional pledges from BASE_YEAR on.
+CO2 AFOLU (land use) is NOT changed by the players; it follows SSP2-4.5 like all other species,
+from the harmonized emissions NetCDF.
 
 Runs are stochastic with the seeds stored in the posterior, so a given config always
 reproduces the same internal variability. This is what makes the screening in
@@ -30,6 +32,7 @@ POSTERIOR_PATH = FAIR_CAL_DIR / 'output' / 'posteriors' / 'calibrated_constraine
 SPECIES_PROPERTIES_PATH = FAIR_CAL_DIR / 'output' / 'posteriors' / 'species_configs_properties.csv'
 SCREENED_CONFIGS_PATH = _HERE / 'data' / 'screened_configs.csv'
 ESTIMATE_EMULATOR_PATH = _HERE / 'data' / 'estimate_emulator.csv'
+OBSERVED_GMST_PATH = _HERE / 'data' / 'IGCC_GMST_1850-2025.csv'
 
 # Base SSP for non-CO2 gases and historical CO2.
 # SSP2-4.5 is "middle of the road" — reasonable as current-policy backdrop.
@@ -39,15 +42,38 @@ BASE_SSP = 'ssp245'
 # Must match CHECKPOINT in app.py.
 CHECKPOINT_YEAR = 2040
 
-# Approximate 2023 fossil CO2 emissions by region (GtCO2/yr), from GCP 2023.
-# Total ~40 GtCO2/yr, consistent with recent GCP estimates.
-REGION_EMISSIONS_2023_GTCO2 = {
-    'Kiina 🇨🇳':      12.0,
-    'USA 🇺🇸':         4.9,
-    'EU 🇪🇺':          3.4,
-    'Intia 🇮🇳':       3.0,
-    'Muu maailma 🌍': 16.7,
+# Game CO2 FFI emissions (fossil fuel + industry, GtCO2/yr). Land use (AFOLU) is not included
+# and is not changed by the players.
+#
+# Source: Global Carbon Budget (GCB 2025 vintage, national territorial fossil CO2) as
+# redistributed by Our World in Data (owid-co2-data.csv, 'co2' column). 2025 is the GCB
+# projection, not a measurement. "Muu maailma" is the remainder World - (China + USA + EU27 +
+# India) and so contains international aviation and shipping (~1.1 GtCO2/yr), which no country owns
+# but which is part of the global CO2 FFI that FaIR needs.
+# Why this vintage: the world total (38.14 GtCO2 in 2023) is within 0.6 GtCO2 of the SSP2-4.5
+# CEDS series FaIR was calibrated with (38.71), so the game trajectory joins the historical record
+# without a step (SSP2-4.5 2022: 38.09 -> game 2023: 38.14).
+
+# First year with regional resolution. Pledged cuts are relative to this year, and the linear
+# ramp to CHECKPOINT_YEAR starts here. 2025 is the latest year GCB has (a projection).
+BASE_YEAR = 2025
+
+# Global CO2 FFI for the years between the SSP2-4.5 historical record (ends 2022) and BASE_YEAR.
+HISTORICAL_CO2_FFI_GTCO2 = {
+    2023: 38.14,
+    2024: 38.65,
 }
+
+REGION_EMISSIONS_BASE_GTCO2 = {
+    'Kiina 🇨🇳':      12.42,
+    'USA 🇺🇸':         5.04,
+    'EU 🇪🇺':          2.41,
+    'Intia 🇮🇳':       3.20,
+    'Muu maailma 🌍': 15.93,
+}
+
+# First year of the emissions array that the game overrides (CO2 FFI before this year is SSP2-4.5).
+FIRST_OVERRIDE_YEAR = min(HISTORICAL_CO2_FFI_GTCO2)
 
 
 @lru_cache(maxsize=1)
@@ -67,13 +93,16 @@ def load_screened_configs() -> pd.DataFrame:
 
 def load_observed_gmst() -> pd.DataFrame:
     """
-    Load the IGCC observed annual GMST series, 1850–2024 (the series the calibration
-    was constrained against), relative to ~1850–1900 as in IPCC AR6.
+    Load the IGCC observed annual GMST series, 1850–2025 (IGCC-2025a release, Zenodo 10.5281/
+    zenodo.21494229, `global_mean_temperatures/annual_averages.csv`), relative to 1850–1900.
 
-    Returns a DataFrame with columns 'year' (float, mid-year: 1850.5 ... 2024.5) and 'gmst' (°C).
+    The posterior was calibrated against the earlier 1850–2024 IGCC vintage (still vendored in
+    data/fair_calibrate/data/forcing/). The two vintages differ by -0.009 °C on average
+    (max |0.044| °C), which is small compared with the screening limit of ~0.25 °C.
+
+    Returns a DataFrame with columns 'year' (float, mid-year: 1850.5 ... 2025.5) and 'gmst' (°C).
     """
-    df = pd.read_csv(FAIR_CAL_DIR / 'data' / 'forcing' / 'IGCC_GMST_1850-2024.csv',
-                     encoding='utf-8-sig')
+    df = pd.read_csv(OBSERVED_GMST_PATH)
     return df[['year', 'gmst']]
 
 
@@ -104,19 +133,19 @@ def annual_mean(temp: xr.DataArray, year: int) -> xr.DataArray:
     return 0.5 * (temp.sel(timebounds=year) + temp.sel(timebounds=year + 1))
 
 
-def extrapolate_after_checkpoint(em_2023: float, em_chk: float, years: np.ndarray) -> np.ndarray:
+def extrapolate_after_checkpoint(em_base: float, em_chk: float, years: np.ndarray) -> np.ndarray:
     """
     Regional CO2 emissions (GtCO₂/yr) after CHECKPOINT_YEAR when no net-zero year is chosen
     ("current policy" extrapolation).
 
-    The absolute annual change of the 2023–CHECKPOINT_YEAR pledge ramp (GtCO₂/yr per year) is
+    The absolute annual change of the BASE_YEAR–CHECKPOINT_YEAR pledge ramp (GtCO₂/yr per year) is
     continued, so a region that cuts keeps cutting at the same pace until it reaches zero
     (floor at zero, no negative emissions). A linear rather than a fractional-rate extrapolation
     is used so that emissions can reach zero. A region whose emissions grow to the checkpoint
     stays flat afterwards: continuing growth to 2100 would be an extrapolation of BAU growth
     well beyond the pledge period.
     """
-    slope = (em_chk - em_2023) / float(CHECKPOINT_YEAR - 2023)
+    slope = (em_chk - em_base) / float(CHECKPOINT_YEAR - BASE_YEAR)
     slope = min(slope, 0.0)
     return np.maximum(0.0, em_chk + slope * (np.asarray(years) - CHECKPOINT_YEAR))
 
@@ -126,10 +155,12 @@ def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end
     Build a global annual CO2 FFI emission time series (GtCO₂/yr) from 1750 to year_end.
 
     1750–2022: zeros here — caller leaves the SSP2-4.5 historical values intact.
-    2023–CHECKPOINT_YEAR: each region ramps linearly from its 2023 baseline to (1−cut)×baseline.
+    2023–(BASE_YEAR−1): observed global totals (HISTORICAL_CO2_FFI_GTCO2), the same for all players.
+    BASE_YEAR–CHECKPOINT_YEAR: each region ramps linearly from its BASE_YEAR level to
+    (1−cut)×level.
     CHECKPOINT_YEAR–netzero_year: each region ramps linearly from its checkpoint level to zero.
     After netzero_year: zero (no CDR).
-    If no netzero year is given for a region: its 2023–CHECKPOINT_YEAR annual change is
+    If no netzero year is given for a region: its BASE_YEAR–CHECKPOINT_YEAR annual change is
     extrapolated (see extrapolate_after_checkpoint).
 
     Parameters
@@ -146,20 +177,23 @@ def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end
     trajectory : ndarray, shape (year_end − 1750,)
         Timepoints-aligned global CO2 FFI in GtCO₂/yr — same unit as the
         harmonized SSP NetCDF that FaIR's parameters were calibrated against.
-        Indices 0…(2022−1750) are zero and will be overwritten by SSP data.
+        Indices 0…(FIRST_OVERRIDE_YEAR−1−1750) are zero and will be overwritten by SSP data.
     """
     years = np.arange(1750, year_end)
     trajectory = np.zeros(len(years))
 
-    for region, base_gtco2 in REGION_EMISSIONS_2023_GTCO2.items():
+    for year, total in HISTORICAL_CO2_FFI_GTCO2.items():
+        trajectory[year - 1750] = total
+
+    for region, base_gtco2 in REGION_EMISSIONS_BASE_GTCO2.items():
         cut     = cuts.get(region, 0.0)
-        em_2023 = base_gtco2                    # GtCO₂/yr
+        em_base = base_gtco2                    # GtCO₂/yr in BASE_YEAR
         em_chk  = base_gtco2 * (1.0 - cut)     # GtCO₂/yr at CHECKPOINT_YEAR
 
-        # 2023 → CHECKPOINT_YEAR: linear ramp
-        mask1 = (years >= 2023) & (years < CHECKPOINT_YEAR)
-        t1 = (years[mask1] - 2023) / float(CHECKPOINT_YEAR - 2023)
-        trajectory[mask1] += em_2023 + t1 * (em_chk - em_2023)
+        # BASE_YEAR → CHECKPOINT_YEAR: linear ramp
+        mask1 = (years >= BASE_YEAR) & (years < CHECKPOINT_YEAR)
+        t1 = (years[mask1] - BASE_YEAR) / float(CHECKPOINT_YEAR - BASE_YEAR)
+        trajectory[mask1] += em_base + t1 * (em_chk - em_base)
 
         nz = (netzero_years or {}).get(region)
         if nz and nz > CHECKPOINT_YEAR:
@@ -170,7 +204,7 @@ def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end
             # after netzero_year: zero (no CDR)
         else:
             mask2 = years >= CHECKPOINT_YEAR
-            trajectory[mask2] += extrapolate_after_checkpoint(em_2023, em_chk, years[mask2])
+            trajectory[mask2] += extrapolate_after_checkpoint(em_base, em_chk, years[mask2])
 
     return trajectory
 
@@ -178,28 +212,29 @@ def build_co2_fossil_trajectory(cuts: dict, netzero_years: dict | None, year_end
 def regional_emissions_in_year(cuts: dict, year: int) -> dict:
     """Extrapolated (no net-zero chosen) emissions of each region in `year` >= CHECKPOINT_YEAR, GtCO₂/yr."""
     emissions = {}
-    for region, em_2023 in REGION_EMISSIONS_2023_GTCO2.items():
-        em_chk = em_2023 * (1.0 - cuts.get(region, 0.0))
-        emissions[region] = float(extrapolate_after_checkpoint(em_2023, em_chk, [year])[0])
+    for region, em_base in REGION_EMISSIONS_BASE_GTCO2.items():
+        em_chk = em_base * (1.0 - cuts.get(region, 0.0))
+        emissions[region] = float(extrapolate_after_checkpoint(em_base, em_chk, [year])[0])
     return emissions
 
 
 def cumulative_co2(cuts: dict, netzero_years: dict | None, temperature_year: int) -> float:
     """
-    Cumulative game CO2 FFI emissions (GtCO₂) from 2023 up to and including temperature_year − 1.
+    Cumulative game CO2 FFI emissions (GtCO₂) from FIRST_OVERRIDE_YEAR up to and including
+    temperature_year − 1.
 
     FaIR temperature is on timebounds (1 Jan) and is driven by the emissions of the preceding
     years, so the temperature of timebound Y depends on the emissions up to year Y − 1.
     """
     trajectory = build_co2_fossil_trajectory(cuts, netzero_years, temperature_year)
-    return float(trajectory[2023 - 1750:].sum())
+    return float(trajectory[FIRST_OVERRIDE_YEAR - 1750:].sum())
 
 
 @lru_cache(maxsize=1)
 def load_estimate_emulator() -> pd.DataFrame:
     """
     Per-member linear emulator written by precompute_estimates.py:
-    T_year = a_year + b_year * (cumulative CO2 2023..year-1 in 1000 GtCO₂), year in (2040, 2100).
+    T_year = a_year + b_year * (cumulative CO2 FIRST_OVERRIDE_YEAR..year-1 in 1000 GtCO₂), year in (2040, 2100).
     """
     if not ESTIMATE_EMULATOR_PATH.exists():
         raise FileNotFoundError(
@@ -327,7 +362,7 @@ def run_fair_game(cuts: dict, netzero_years: dict | None, config_id: int) -> xr.
         {region: fraction_cut} where fraction_cut ∈ [0, 1].
     netzero_years : dict or None
         {region: year} for Phase 2 net-zero dates; None extrapolates each region's
-        2023–CHECKPOINT_YEAR annual change (see extrapolate_after_checkpoint).
+        BASE_YEAR–CHECKPOINT_YEAR annual change (see extrapolate_after_checkpoint).
     config_id : int
         Index value from data/screened_configs.csv / the calibrated posterior.
 
@@ -350,11 +385,11 @@ def run_fair_game(cuts: dict, netzero_years: dict | None, config_id: int) -> xr.
 
     f = setup_fair([config_id], year_end, base_ssp=BASE_SSP)
 
-    # Overwrite CO2 FFI from 2023 onwards with the game trajectory.
+    # Overwrite CO2 FFI from FIRST_OVERRIDE_YEAR onwards with the game trajectory.
     # dims of f.emissions: (timepoints, scenario, config, specie)
     game_co2 = build_co2_fossil_trajectory(cuts, netzero_years, year_end)
     co2_idx  = list(f.emissions.specie.values).index('CO2 FFI')
-    f.emissions.values[2023 - 1750:, 0, 0, co2_idx] = game_co2[2023 - 1750:]
+    f.emissions.values[FIRST_OVERRIDE_YEAR - 1750:, 0, 0, co2_idx] = game_co2[FIRST_OVERRIDE_YEAR - 1750:]
 
     f.run()
 

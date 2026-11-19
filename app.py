@@ -21,7 +21,8 @@ import streamlit.components.v1 as components
 USE_SLIDERS: bool = '--sliders' in sys.argv
 
 from fair_runner import (
-    REGION_EMISSIONS_2023_GTCO2,
+    BASE_YEAR,
+    REGION_EMISSIONS_BASE_GTCO2,
     load_screened_configs,
     load_observed_gmst,
     run_fair_game,
@@ -31,12 +32,12 @@ from fair_runner import (
     weighted_mean_interval,
 )
 
-TOTAL_2023   = sum(REGION_EMISSIONS_2023_GTCO2.values())
+TOTAL_BASE   = sum(REGION_EMISSIONS_BASE_GTCO2.values())
 PARIS_15     = 1.5
 PARIS_20     = 2.0
 CHECKPOINT      = 2040   # Phase 1 pledge year
-ANIM_START      = 2025   # first year of the simulated line, animated year by year. The observed
-                         # record (IGCC) ends with 2024, so the model is drawn only after it.
+ANIM_START      = 2026   # first year of the simulated line, animated year by year. The observed
+                         # record (IGCC) ends with 2025, so the model is drawn only after it.
 ANIM_INTERVAL   = 80     # ms per animation frame (increase to slow down)
 ESTIMATE_YEAR   = 2100   # year of the warming estimate shown to the players
 
@@ -86,7 +87,7 @@ EMISSION_OPTIONS = {
     ],
 }
 
-# Maximum post-CHECKPOINT decarbonisation rate: 3 % of each region's 2023 baseline
+# Maximum post-CHECKPOINT decarbonisation rate: 3 % of each region's BASE_YEAR baseline
 # per year (in absolute GtCO2 terms, not fraction of remaining stock).
 # Basis: AR6 WGIII 1.5 °C pathways; fastest observed national transitions.
 # Sets a physically plausible floor on the net-zero year given Phase 1 ambition.
@@ -204,7 +205,7 @@ def _min_netzero_year(cut_fraction: float) -> int:
     """
     Earliest physically plausible net-zero year given a Phase 1 cut fraction.
 
-    em_remaining = 1 − cut_fraction is the fraction of 2023 emissions still
+    em_remaining = 1 − cut_fraction is the fraction of BASE_YEAR emissions still
     present at CHECKPOINT. For India Varovainen (cut = −0.35), em_remaining = 1.35.
     Dividing by MAX_DECARB_RATE_PER_YEAR gives the minimum years needed from CHECKPOINT.
     """
@@ -231,16 +232,16 @@ def _draw_config(screened_df):
 
 def _init_state():
     # Default Phase 1: index 0 (Varovainen) for all regions
-    _default_cuts = {r: EMISSION_OPTIONS[r][0][1] for r in REGION_EMISSIONS_2023_GTCO2}
+    _default_cuts = {r: EMISSION_OPTIONS[r][0][1] for r in REGION_EMISSIONS_BASE_GTCO2}
     defaults = {
         'phase':           1,
-        'option_indices':  {r: 0 for r in REGION_EMISSIONS_2023_GTCO2},
+        'option_indices':  {r: 0 for r in REGION_EMISSIONS_BASE_GTCO2},
         'cuts':            _default_cuts,
         # Default Phase 2: Maltillinen (index 1) for all regions
-        'netzero_indices': {r: 1 for r in REGION_EMISSIONS_2023_GTCO2},
+        'netzero_indices': {r: 1 for r in REGION_EMISSIONS_BASE_GTCO2},
         'netzero_years':   {
             r: _min_netzero_year(_default_cuts[r]) + NETZERO_OFFSETS[1][1]
-            for r in REGION_EMISSIONS_2023_GTCO2
+            for r in REGION_EMISSIONS_BASE_GTCO2
         },
         'temp_phase1':     None,
         'temp_phase2':     None,
@@ -379,7 +380,7 @@ def _make_temperature_animation(temp_da, year_start, year_end,
                                  highlight_year=None, show_peak=False,
                                  phase1_da=None, inset_metrics=None):
     """
-    Temperature trajectory: observations (static, up to 2024) followed by the simulated
+    Temperature trajectory: observations (static, up to 2025) followed by the simulated
     line from ANIM_START onward, drawn year-by-year. The simulation is not shown over the
     observed period. Returns an HTML string for components.html().
 
@@ -462,7 +463,7 @@ def _make_temperature_animation(temp_da, year_start, year_end,
     model_line, = ax.plot([], [], color='#5A84E2', linewidth=2.5, label='Ilmastomalli')
     ax.legend(facecolor='#1e2130', labelcolor='white', fontsize=9)
 
-    # The step from the last observed point (2024) to the first modelled point is drawn only
+    # The step from the last observed point (2025) to the first modelled point is drawn only
     # on the final frame, after the rest of the simulated line. Plot only: the FaIR results
     # themselves are not modified.
     jump_line, = ax.plot([], [], color='#5A84E2', linewidth=2.5)
@@ -504,10 +505,10 @@ def _make_temperature_animation(temp_da, year_start, year_end,
 
 
 def _emissions_bar_chart(cuts):
-    """Bar chart: 2023 baseline vs. pledged CHECKPOINT emissions per region."""
-    regions = list(REGION_EMISSIONS_2023_GTCO2.keys())
-    base    = [REGION_EMISSIONS_2023_GTCO2[r] for r in regions]
-    target  = [REGION_EMISSIONS_2023_GTCO2[r] * (1 - cuts[r]) for r in regions]
+    """Bar chart: BASE_YEAR baseline vs. pledged CHECKPOINT emissions per region."""
+    regions = list(REGION_EMISSIONS_BASE_GTCO2.keys())
+    base    = [REGION_EMISSIONS_BASE_GTCO2[r] for r in regions]
+    target  = [REGION_EMISSIONS_BASE_GTCO2[r] * (1 - cuts[r]) for r in regions]
     em_2100 = regional_emissions_in_year(cuts, ESTIMATE_YEAR)
     later   = [em_2100[r] for r in regions]
     colors  = [REGION_COLORS[r] for r in regions]
@@ -518,7 +519,7 @@ def _emissions_bar_chart(cuts):
 
     x     = np.arange(len(regions))
     width = 0.27
-    ax.bar(x - width, base,   width, color=colors, alpha=0.30, label='Päästöt 2023')
+    ax.bar(x - width, base,   width, color=colors, alpha=0.30, label=f'Päästöt {BASE_YEAR}')
     ax.bar(x,         target, width, color=colors, alpha=0.90, label=f'Päästöt {CHECKPOINT} (lupaus)')
     ax.bar(x + width, later,  width, color=colors, alpha=0.60, hatch='//',
            label=f'Päästöt {ESTIMATE_YEAR} (sama vuosimuutos jatkuu)')
@@ -535,23 +536,23 @@ def _emissions_bar_chart(cuts):
 
 
 def _emissions_pathway_chart(cuts, netzero_years):
-    """Stacked area chart: per-region CO2 pathway 2023 → each region's net-zero year."""
+    """Stacked area chart: per-region CO2 pathway BASE_YEAR → each region's net-zero year."""
     max_nz   = max(netzero_years.values())
     plot_end = min(max_nz + 10, 2110)
-    years    = np.arange(2023, plot_end + 1)
-    regions  = list(REGION_EMISSIONS_2023_GTCO2.keys())
+    years    = np.arange(BASE_YEAR, plot_end + 1)
+    regions  = list(REGION_EMISSIONS_BASE_GTCO2.keys())
 
     region_em = {}
-    for r, base in REGION_EMISSIONS_2023_GTCO2.items():
+    for r, base in REGION_EMISSIONS_BASE_GTCO2.items():
         cut    = cuts.get(r, 0.0)
-        em2023 = base
+        em_base = base
         em_chk = base * (1 - cut)
         nz     = netzero_years.get(r, 2070)
 
         em = np.zeros(len(years))
         for i, y in enumerate(years):
             if y < CHECKPOINT:
-                em[i] = em2023 + (em_chk - em2023) * (y - 2023) / (CHECKPOINT - 2023)
+                em[i] = em_base + (em_chk - em_base) * (y - BASE_YEAR) / (CHECKPOINT - BASE_YEAR)
             elif y < nz:
                 em[i] = em_chk * (1 - (y - CHECKPOINT) / (nz - CHECKPOINT))
             else:
@@ -571,7 +572,7 @@ def _emissions_pathway_chart(cuts, netzero_years):
     ax.axvline(CHECKPOINT, color='white', linewidth=1, linestyle=':')
     ax.set_ylabel('GtCO₂/vuosi', color='white')
     ax.set_xlabel('Vuosi', color='white')
-    ax.set_xlim(2023, plot_end)
+    ax.set_xlim(BASE_YEAR, plot_end)
     ax.tick_params(colors='white')
     for spine in ax.spines.values():
         spine.set_edgecolor('#444444')
@@ -644,7 +645,11 @@ def _phase1():
     st.title('🌍 Ilmastoneuvottelut — Mitä lupaatte?')
     st.markdown(
         'Jokainen ryhmä edustaa yhtä maailman suurta päästöaluetta. '
-        f'Sopikaa, kuinka paljon leikkaatte **CO₂-päästöjä** vuoteen **{CHECKPOINT}** mennessä.'
+        f'Sopikaa, kuinka paljon leikkaatte **fossiilisia CO₂-päästöjä** vuoteen **{CHECKPOINT}** mennessä.'
+    )
+    st.caption(
+        'Fossiiliset CO₂-päästöt tarkoittavat fossiilisten polttoaineiden ja teollisuuden päästöjä. '
+        'Maankäytön päästöt (esim. metsäkato) eivät muutu pelissä: ne noudattavat SSP2-4.5-skenaariota.'
     )
 
     _nav_bar()
@@ -653,26 +658,26 @@ def _phase1():
     option_indices = st.session_state['option_indices']
 
     st.subheader('Aseta jokaisen alueen lupaus')
-    cols = st.columns(len(REGION_EMISSIONS_2023_GTCO2))
-    for col, (region, base_em) in zip(cols, REGION_EMISSIONS_2023_GTCO2.items()):
+    cols = st.columns(len(REGION_EMISSIONS_BASE_GTCO2))
+    for col, (region, base_em) in zip(cols, REGION_EMISSIONS_BASE_GTCO2.items()):
         with col:
             cut    = _cut_input(region, option_indices)
             cuts[region] = cut
             em_chk = base_em * (1.0 - cut)
             st.caption(
-                f'2023: **{base_em:.1f}** GtCO₂/v  \n'
+                f'{BASE_YEAR}: **{base_em:.1f}** GtCO₂/v  \n'
                 f'{CHECKPOINT}: **{em_chk:.1f}** GtCO₂/v'
             )
     st.session_state['cuts']          = cuts
     st.session_state['option_indices'] = option_indices
 
-    total_chk     = sum(REGION_EMISSIONS_2023_GTCO2[r] * (1 - cuts[r]) for r in cuts)
-    total_cut_pct = (1 - total_chk / TOTAL_2023) * 100
+    total_chk     = sum(REGION_EMISSIONS_BASE_GTCO2[r] * (1 - cuts[r]) for r in cuts)
+    total_cut_pct = (1 - total_chk / TOTAL_BASE) * 100
     change_str = (f'{total_cut_pct:.0f} % leikkaus' if total_cut_pct >= 0
                   else f'{-total_cut_pct:.0f} % kasvu')
     st.info(
         f'**Yhteensä {CHECKPOINT}:** {total_chk:.1f} GtCO₂/vuosi  '
-        f'({change_str} vuoden 2023 tasosta)'
+        f'({change_str} vuoden {BASE_YEAR} tasosta)'
     )
     st.pyplot(_emissions_bar_chart(cuts))
 
@@ -688,7 +693,7 @@ def _phase1():
     )
     st.caption(
         f'Oletus {CHECKPOINT} jälkeen: kunkin alueen päästöt muuttuvat vuosittain yhtä paljon kuin '
-        f'vuosina 2023–{CHECKPOINT} (laskevat korkeintaan nollaan; kasvavat pysyvät ennallaan).'
+        f'vuosina {BASE_YEAR}–{CHECKPOINT} (laskevat korkeintaan nollaan; kasvavat pysyvät ennallaan).'
     )
 
     if st.button('🔬 Simuloi! →', type='primary'):
@@ -702,10 +707,10 @@ def _phase1():
         # Phase 2 result is stale whenever cuts change and Phase 1 reruns
         st.session_state['temp_phase2'] = None
         # Reset Phase 2 net-zero choices to Maltillinen (index 1) based on new Phase 1 cuts
-        st.session_state['netzero_indices'] = {r: 1 for r in REGION_EMISSIONS_2023_GTCO2}
+        st.session_state['netzero_indices'] = {r: 1 for r in REGION_EMISSIONS_BASE_GTCO2}
         st.session_state['netzero_years'] = {
             r: _min_netzero_year(cuts[r]) + NETZERO_OFFSETS[1][1]
-            for r in REGION_EMISSIONS_2023_GTCO2
+            for r in REGION_EMISSIONS_BASE_GTCO2
         }
         with st.spinner('Lasketaan FaIR-simulaatio...'):
             temp = run_fair_game(
@@ -720,7 +725,7 @@ def _phase1():
         temp   = st.session_state['temp_phase1']
         t_chk = float(temp.sel(timebounds=CHECKPOINT))
         _obs = _load_gmst()
-        obs_2024 = float(_obs.loc[np.floor(_obs['year']) == 2024, 'gmst'].iloc[0])   # IGCC observed 2024
+        obs_last = float(_obs.loc[np.floor(_obs['year']) == ANIM_START - 1, 'gmst'].iloc[0])   # IGCC observed, last year of the record
 
         _estimate_banner(cuts, None)
         st.subheader('📊 Simulaatiotulokset')
@@ -729,7 +734,7 @@ def _phase1():
                 temp, year_start=1900, year_end=CHECKPOINT,
                 highlight_year=CHECKPOINT,
                 inset_metrics=[
-                    ('Havaittu lämpötila 2024',            f'+{obs_2024:.2f} °C'),
+                    (f'Havaittu lämpötila {ANIM_START - 1}', f'+{obs_last:.2f} °C'),
                     (f'Malli: keskilämpötila {CHECKPOINT}', f'+{t_chk:.2f} °C'),
                 ],
             ),
@@ -747,8 +752,8 @@ def _phase1():
 def _phase2():
     st.title('🎯 Milloin kukin alue saavuttaa nollapäästöt?')
     st.markdown(
-        'Jokainen ryhmä päättää, milloin **oma alueensa** CO₂-päästöt laskevat nollaan. '
-        'Metaani ja muut kasvihuonekaasut seuraavat nykyistä kehitystä (SSP2-4.5).'
+        'Jokainen ryhmä päättää, milloin **oman alueensa** fossiiliset CO₂-päästöt laskevat nollaan. '
+        'Metaani, maankäytön päästöt ja muut kasvihuonekaasut seuraavat nykyistä kehitystä (SSP2-4.5).'
     )
 
     _nav_bar()
@@ -758,13 +763,13 @@ def _phase2():
     netzero_indices = st.session_state['netzero_indices']
 
     st.subheader('Valitse nollapäästövuosi alueittain')
-    cols = st.columns(len(REGION_EMISSIONS_2023_GTCO2))
-    for col, region in zip(cols, REGION_EMISSIONS_2023_GTCO2):
+    cols = st.columns(len(REGION_EMISSIONS_BASE_GTCO2))
+    for col, region in zip(cols, REGION_EMISSIONS_BASE_GTCO2):
         with col:
             min_nz = _min_netzero_year(cuts.get(region, 0.0))
             nz     = _nz_input(region, min_nz, netzero_indices)
             netzero_years[region] = nz
-            em_chk = REGION_EMISSIONS_2023_GTCO2[region] * (1 - cuts.get(region, 0.0))
+            em_chk = REGION_EMISSIONS_BASE_GTCO2[region] * (1 - cuts.get(region, 0.0))
             st.caption(f'{CHECKPOINT}: {em_chk:.1f} GtCO₂/v → 0 vuoteen **{nz}**')
     st.session_state['netzero_years']   = netzero_years
     st.session_state['netzero_indices'] = netzero_indices

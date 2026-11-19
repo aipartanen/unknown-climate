@@ -11,9 +11,9 @@ Students are divided into five groups, each representing a major emitting region
 The game runs in two phases:
 
 **Phase 1 — Emission pledges to 2040**
-Each group sets a CO₂ reduction target for their region (0–100 %, in 5 % steps).
+Each group sets a fossil CO₂ reduction target for their region, relative to 2025 emissions.
 After all groups agree, the teacher clicks *Simuloi!* to run a FaIR simulation.
-The app reveals the current modelled warming (2024) and the projected temperature in 2040,
+The app reveals the latest observed warming (2025) and the projected temperature in 2040,
 and shows which Paris Agreement threshold the combined pledges hit.
 At this point the climate model's Equilibrium Climate Sensitivity (ECS) is also revealed,
 giving students context for Phase 2.
@@ -27,10 +27,12 @@ including how it compares to the Phase 1 scenario.
 
 Each game session draws one configuration at random from a pre-screened shortlist of
 FaIR posterior ensemble members (fair-calibrate v1.6.0, FaIR 2.2.4; 841 members).
-Screening is only for visual continuity with the observations: a member is kept if its 2025
-annual-mean temperature is within about 0.25 °C of the mean of the observed (IGCC) 2022–2024
+Screening is only for visual continuity with the observations: a member is kept if its 2026
+annual-mean temperature is within about 0.25 °C of the mean of the observed (IGCC-2025a) 2023–2025
 temperatures. The rule and its rationale are documented in `precompute_configs.py`.
-Non-CO₂ forcing follows the SSP2-4.5 scenario throughout.
+Only fossil (fuel and industry) CO₂ is set by the players. Observed global totals are used for
+2023–2024 and regional baselines for 2025 (Global Carbon Budget, via Our World in Data).
+Land-use CO₂ and all non-CO₂ forcing follow the SSP2-4.5 scenario throughout.
 Runs are stochastic with fixed per-member seeds, so a member always gives the same curve.
 
 ## Setup

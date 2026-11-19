@@ -10,4 +10,4 @@ which holds the fair-calibrate v1.6.0 output for FaIR 2.2.4. Only the files the 
 | `output/emissions/ssps_harmonized_1750-2499.nc` | harmonized SSP emissions (SSP2-4.5 is the game's backdrop) |
 | `output/forcing/solar_forcing_timebounds_cmip7.csv` | solar ERF relative to 1850-2019 |
 | `data/forcing/volcanic_forcing_timebounds_cmip7.csv` | volcanic ERF relative to 1850-2021 |
-| `data/forcing/IGCC_GMST_1850-2024.csv` | observed annual GMST (IGCC), stamped at mid-year (1850.5 ... 2024.5); the observation the calibration was constrained against |
+| `data/forcing/IGCC_GMST_1850-2024.csv` | observed annual GMST (IGCC), stamped at mid-year (1850.5 ... 2024.5); the observation the calibration was constrained against. No longer read by the game, which uses `data/IGCC_GMST_1850-2025.csv` (IGCC-2025a, differs by ~0.01 °C on average) |
