@@ -50,7 +50,7 @@ ANIM_START      = 2026   # first year of the simulated line, animated year by ye
                          # record (IGCC) ends with 2025, so the model is drawn only after it.
 ANIM_SECONDS    = 5.0    # duration of the year-by-year line animation (increase to slow down)
 ANIM_MAX_FRAMES = 60     # chart updates sent to the browser; years are grouped beyond this
-OBS_COLOR       = '#8C8C8C'   # observed GMST: mid-grey reads on light and dark themes
+OBS_COLOR       = '#555B66'   # observed GMST: dark grey on the light theme
 MODEL_COLOR     = '#5A84E2'
 DECADE_COLOR    = '#D9961A'   # darker than the old yellow so it reads on white too
 ESTIMATE_YEAR   = 2100   # year of the warming estimate shown to the players
@@ -279,11 +279,22 @@ SCREEN_TITLES = {
 }
 # Estimate stages: (Finnish label, colour). A stage is shown from its own screen onwards.
 STAGE_STYLE = {
-    'prior':    ('Alkuarvio', '#9AA0A6'),
+    'prior':    ('Alkuarvio', '#8A9099'),
     'obs2040':  ('Havainnon 2040 jälkeen', '#5A84E2'),
     'research': ('Tutkimuksen jälkeen', '#E26D91'),
 }
-CHART_BG = '#0e1117'
+# Light chart style (the app theme is pinned to light in .streamlit/config.toml)
+CHART_BG     = 'white'
+CHART_FG     = '#262730'   # Streamlit's light-theme text colour
+CHART_SPINE  = '#C8CCD2'
+# The level colours are fine for lines and bars but too pale for text on white:
+# text uses a darker shade of the same hue.
+TEXT_SHADE = {
+    '#65C06C': '#2E7D32',
+    '#FFA73E': '#B85C00',
+    '#E2824A': '#A84A12',
+    '#E24444': '#B71C1C',
+}
 
 
 def _init_state():
@@ -419,9 +430,9 @@ def _estimate_figure(temperature, stages, truth=None):
         ax_hist, ax_bar = axes[0, col], axes[1, col]
         for ax in (ax_hist, ax_bar):
             ax.set_facecolor(CHART_BG)
-            ax.tick_params(colors='white')
+            ax.tick_params(colors=CHART_FG)
             for spine in ax.spines.values():
-                spine.set_edgecolor('#444444')
+                spine.set_edgecolor(CHART_SPINE)
         bins = np.linspace(values.min(), values.max(), 36)
         bar_transform = blended_transform_factory(ax_bar.transAxes, ax_bar.transData)
         for row, (stage, weights) in enumerate(stages.items()):
@@ -433,7 +444,7 @@ def _estimate_figure(temperature, stages, truth=None):
             mean, lo, hi = weighted_mean_interval(values, weights)
             ax_bar.plot([lo, hi], [row, row], color=color, linewidth=7, solid_capstyle='butt',
                         alpha=1.0 if newest else 0.6)
-            ax_bar.plot([mean], [row], 'o', color='white', markersize=5)
+            ax_bar.plot([mean], [row], 'o', color='white', markeredgecolor=CHART_FG, markersize=6)
             ax_bar.text(1.01, row, f'{_fi(mean, 1)} ({_fi(lo, 1)}–{_fi(hi, 1)})', transform=bar_transform,
                         color=color, fontsize=9, va='center', clip_on=False)
         if col == 1:
@@ -441,19 +452,19 @@ def _estimate_figure(temperature, stages, truth=None):
             ax_hist.axvline(PARIS_20, color='#FFA73E', linewidth=1.2, linestyle='--')
         if true_value is not None:
             for ax in (ax_hist, ax_bar):
-                ax.axvline(true_value, color='white', linewidth=2.0, linestyle=':')
+                ax.axvline(true_value, color=CHART_FG, linewidth=2.0, linestyle=':')
             ax_hist.text(true_value, ax_hist.get_ylim()[1] * 0.95, f' oikea arvo {_fi(true_value, 2)}',
-                         color='white', fontsize=9, va='top')
-        ax_hist.set_title(title, color='white', fontsize=11)
+                         color=CHART_FG, fontsize=9, va='top')
+        ax_hist.set_title(title, color=CHART_FG, fontsize=11)
         ax_hist.set_yticks([])
         ax_bar.set_yticks([])
         ax_bar.set_ylim(n_stages - 0.4, -0.6)    # oldest stage on top
-        ax_bar.set_xlabel(xlabel, color='white')
+        ax_bar.set_xlabel(xlabel, color=CHART_FG)
         ax_bar.xaxis.set_major_formatter(COMMA_TICKS)
     # Legend above the panels, so it never hides the histograms or the true-value label
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='upper center', ncol=len(labels), frameon=False,
-               labelcolor='white', fontsize=9, bbox_to_anchor=(0.45, 1.0))
+               labelcolor=CHART_FG, fontsize=9, bbox_to_anchor=(0.45, 1.0))
     fig.subplots_adjust(left=0.03, right=0.88, wspace=0.32, bottom=0.14, top=0.86)
     return fig
 
@@ -496,9 +507,9 @@ def _lottery_html(n_cells, highlight):
     cells = []
     for i in range(n_cells):
         if i == highlight:
-            style = 'background:#FFD54A;box-shadow:0 0 10px 3px #FFD54A;'
+            style = 'background:#E2824A;box-shadow:0 0 0 3px #FFD9BF,0 0 12px 4px #E2824A;'
         else:
-            style = 'background:#2f3b52;'
+            style = 'background:#C3CBD6;'
         cells.append(f'<div style="width:12px;height:12px;border-radius:50%;{style}"></div>')
     return ('<div style="display:flex;flex-wrap:wrap;gap:4px;max-width:960px;'
             'padding:12px 0">' + ''.join(cells) + '</div>')
@@ -530,14 +541,14 @@ def _impacts_page():
     # Large temperature badge
     st.markdown(
         f'<div style="text-align:center;padding:16px 0 24px 0">'
-        f'<span style="font-size:3.5em;font-weight:900;color:{color}">'
+        f'<span style="font-size:3.5em;font-weight:900;color:{TEXT_SHADE.get(color, color)}">'
         f'+{_fi(selected, 1)} °C</span></div>',
         unsafe_allow_html=True,
     )
 
     def _bar(pct):
         return (
-            f'<div style="background:#2a2a3a;border-radius:4px;height:8px;margin:4px 0 14px 0">'
+            f'<div style="background:#E6E8EC;border-radius:4px;height:8px;margin:4px 0 14px 0">'
             f'<div style="background:{color};width:{pct}%;height:8px;border-radius:4px"></div>'
             f'</div>'
         )
@@ -549,7 +560,7 @@ def _impacts_page():
         for icon, label, value, sev in data['global']:
             st.markdown(f'**{icon} {label}**')
             st.markdown(
-                f'<span style="color:{color};font-size:1.05em">{value}</span>',
+                f'<span style="color:{TEXT_SHADE.get(color, color)};font-size:1.05em">{value}</span>',
                 unsafe_allow_html=True,
             )
             st.markdown(_bar(sev), unsafe_allow_html=True)
@@ -559,7 +570,7 @@ def _impacts_page():
         for icon, label, value, sev in data['finland']:
             st.markdown(f'**{icon} {label}**')
             st.markdown(
-                f'<span style="color:{color};font-size:1.05em">{value}</span>',
+                f'<span style="color:{TEXT_SHADE.get(color, color)};font-size:1.05em">{value}</span>',
                 unsafe_allow_html=True,
             )
             st.markdown(_bar(sev), unsafe_allow_html=True)
@@ -699,10 +710,13 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
     ]
 
     # --- warming levels: Paris lines labelled on the left, impacts on the right ---
-    levels = pd.DataFrame([{'T': t, 'väri': color, 'vaikutus': label}
+    levels = pd.DataFrame([{'T': t, 'väri': color, 'tekstiväri': TEXT_SHADE.get(color, color),
+                            'vaikutus': label}
                            for t, color, label in TEMP_ANNOTATIONS if t <= y_max])
-    paris = pd.DataFrame([{'T': PARIS_15, 'väri': '#65C06C', 'nimi': '1,5 °C (Pariisin tavoite)'},
-                          {'T': PARIS_20, 'väri': '#FFA73E', 'nimi': '2,0 °C (Pariisin raja)'}])
+    paris = pd.DataFrame([{'T': PARIS_15, 'tekstiväri': TEXT_SHADE['#65C06C'],
+                           'nimi': '1,5 °C (Pariisin tavoite)'},
+                          {'T': PARIS_20, 'tekstiväri': TEXT_SHADE['#FFA73E'],
+                           'nimi': '2,0 °C (Pariisin raja)'}])
     paris = paris[paris['T'] <= y_max]    # text marks are not clipped: drop labels above the plot
     layers += [
         alt.Chart(levels).mark_rule(strokeDash=[5, 4], strokeWidth=1.3).encode(
@@ -711,11 +725,11 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
         alt.Chart(levels).mark_text(align='left', baseline='middle', dx=8, fontSize=11,
                                     lineBreak='\n').encode(
             x=alt.datum(x_end), y=alt.Y('T:Q', scale=y_scale),
-            text='vaikutus:N', color=alt.Color('väri:N', scale=None)),
+            text='vaikutus:N', color=alt.Color('tekstiväri:N', scale=None)),
         alt.Chart(paris).mark_text(align='left', baseline='bottom', dx=4, dy=-3, fontSize=11,
                                    fontWeight='bold').encode(
             x=alt.datum(year_start), y=alt.Y('T:Q', scale=y_scale),
-            text='nimi:N', color=alt.Color('väri:N', scale=None)),
+            text='nimi:N', color=alt.Color('tekstiväri:N', scale=None)),
     ]
 
     if highlight_year is not None:
@@ -796,8 +810,8 @@ def _emissions_bar_chart(cuts):
     colors  = [REGION_COLORS[r] for r in regions]
 
     fig, ax = plt.subplots(figsize=(8, 3.5))
-    fig.patch.set_facecolor('#0e1117')
-    ax.set_facecolor('#0e1117')
+    fig.patch.set_facecolor(CHART_BG)
+    ax.set_facecolor(CHART_BG)
 
     x     = np.arange(len(regions))
     width = 0.27
@@ -807,13 +821,13 @@ def _emissions_bar_chart(cuts):
            label=f'Päästöt {ESTIMATE_YEAR} (sama vuosimuutos jatkuu)')
 
     ax.set_xticks(x)
-    ax.set_xticklabels([_plain_name(r) for r in regions], color='white', fontsize=9)
-    ax.set_ylabel('GtCO₂/vuosi', color='white')
+    ax.set_xticklabels([_plain_name(r) for r in regions], color=CHART_FG, fontsize=9)
+    ax.set_ylabel('GtCO₂/vuosi', color=CHART_FG)
     ax.yaxis.set_major_formatter(COMMA_TICKS)
-    ax.tick_params(colors='white')
-    ax.legend(facecolor='#1e2130', labelcolor='white', fontsize=9)
+    ax.tick_params(colors=CHART_FG)
+    ax.legend(facecolor=CHART_BG, labelcolor=CHART_FG, fontsize=9)
     for spine in ax.spines.values():
-        spine.set_edgecolor('#444444')
+        spine.set_edgecolor(CHART_SPINE)
     fig.tight_layout()
     return fig
 
@@ -843,8 +857,8 @@ def _emissions_pathway_chart(cuts, netzero_years):
         region_em[r] = em
 
     fig, ax = plt.subplots(figsize=(9, 3))
-    fig.patch.set_facecolor('#0e1117')
-    ax.set_facecolor('#0e1117')
+    fig.patch.set_facecolor(CHART_BG)
+    ax.set_facecolor(CHART_BG)
 
     stack_bottom = np.zeros(len(years))
     for r in regions:
@@ -852,17 +866,17 @@ def _emissions_pathway_chart(cuts, netzero_years):
                         color=REGION_COLORS[r], alpha=0.75, label=_plain_name(r))
         stack_bottom += region_em[r]
 
-    ax.axvline(CHECKPOINT, color='white', linewidth=1, linestyle=':')
-    ax.set_ylabel('GtCO₂/vuosi', color='white')
+    ax.axvline(CHECKPOINT, color=CHART_FG, linewidth=1, linestyle=':')
+    ax.set_ylabel('GtCO₂/vuosi', color=CHART_FG)
     ax.yaxis.set_major_formatter(COMMA_TICKS)
-    ax.set_xlabel('Vuosi', color='white')
+    ax.set_xlabel('Vuosi', color=CHART_FG)
     ax.set_xlim(BASE_YEAR, plot_end)
-    ax.tick_params(colors='white')
+    ax.tick_params(colors=CHART_FG)
     for spine in ax.spines.values():
-        spine.set_edgecolor('#444444')
-    ax.legend(facecolor='#1e2130', labelcolor='white', fontsize=8,
+        spine.set_edgecolor(CHART_SPINE)
+    ax.legend(facecolor=CHART_BG, labelcolor=CHART_FG, fontsize=8,
               loc='upper right', ncol=2)
-    ax.set_title('Päästöpolku alueittain', color='white', fontsize=10)
+    ax.set_title('Päästöpolku alueittain', color=CHART_FG, fontsize=10)
     fig.tight_layout()
     return fig
 

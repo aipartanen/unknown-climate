@@ -1,0 +1,4 @@
+# Light theme for all viewers: dark text on a light background stays readable on
+# classroom projectors in lit rooms, and screenshots fit slides and handouts.
+[theme]
+base = "light"
