@@ -884,20 +884,23 @@ def _emissions_pathway_chart(cuts, netzero_years):
 def _cut_input(region: str, option_indices: dict, disabled: bool = False) -> float:
     """
     Return the chosen cut fraction for a region.
-    In slider mode (--sliders flag): free slider, returns fraction converted from %.
+    In slider mode (--sliders flag): free slider of the emissions change 2025→2040 in %
+    (negative = reduction), the same sign as the radio labels; returns the cut fraction.
     In radio mode (default): 4-option radio from EMISSION_OPTIONS.
     Updates option_indices[region] in place. disabled locks the input (after the draw).
     """
     if USE_SLIDERS:
-        # Initialise slider from whichever radio option is currently selected
-        stored_idx  = option_indices.get(region, 0)
-        current_pct = int(EMISSION_OPTIONS[region][stored_idx][1] * 100)
-        pct = st.slider(
-            region, min_value=-50, max_value=100,
-            value=current_pct, step=5, format='%d%%',
+        # Initialise the slider from whichever radio option is currently selected.
+        # Range: from net zero by 2040 (-100 %) to the largest growth among the options
+        # (India Passiivinen, +80 %), so every radio option can be reached.
+        stored_idx = option_indices.get(region, 0)
+        change_pct = int(round(-EMISSION_OPTIONS[region][stored_idx][1] * 100))
+        change_pct = st.slider(
+            region, min_value=-100, max_value=80,
+            value=change_pct, step=5, format='%+d %%',
             key=f'slider_p1_{region}', disabled=disabled,
         )
-        return pct / 100.0
+        return -change_pct / 100.0
     options = EMISSION_OPTIONS[region]
     idx = st.radio(
         region,
@@ -962,6 +965,9 @@ def _screen_pledges():
     option_indices = st.session_state['option_indices']
 
     st.subheader('Aseta jokaisen alueen lupaus')
+    if USE_SLIDERS:
+        st.caption(f'Päästöjen muutos vuodesta {BASE_YEAR} vuoteen {CHECKPOINT}: '
+                   '−100 % = nollapäästöt, 0 % = ennallaan, + = päästöt kasvavat.')
     cols = st.columns(len(REGION_EMISSIONS_BASE_GTCO2))
     for col, (region, base_em) in zip(cols, REGION_EMISSIONS_BASE_GTCO2.items()):
         with col:
