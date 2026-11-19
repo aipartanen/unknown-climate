@@ -19,6 +19,7 @@ import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 from matplotlib.transforms import blended_transform_factory
 import sys
 import streamlit as st
@@ -226,6 +227,15 @@ IMPACTS = {
 }
 
 
+def _fi(value, decimals):
+    """Number with a Finnish decimal comma, e.g. _fi(1.234, 2) -> '1,23'."""
+    return f'{value:.{decimals}f}'.replace('.', ',')
+
+
+# Matplotlib tick labels with a decimal comma (rounded first, so 0.30000000000000004 -> '0,3')
+COMMA_TICKS = mticker.FuncFormatter(lambda value, pos: f'{round(value, 6):g}'.replace('.', ','))
+
+
 def _plain_name(region: str) -> str:
     """Return the text part of a region name, dropping the trailing flag emoji."""
     return region.rsplit(' ', 1)[0]
@@ -424,7 +434,7 @@ def _estimate_figure(temperature, stages, truth=None):
             ax_bar.plot([lo, hi], [row, row], color=color, linewidth=7, solid_capstyle='butt',
                         alpha=1.0 if newest else 0.6)
             ax_bar.plot([mean], [row], 'o', color='white', markersize=5)
-            ax_bar.text(1.01, row, f'{mean:.1f} ({lo:.1f}–{hi:.1f})', transform=bar_transform,
+            ax_bar.text(1.01, row, f'{_fi(mean, 1)} ({_fi(lo, 1)}–{_fi(hi, 1)})', transform=bar_transform,
                         color=color, fontsize=9, va='center', clip_on=False)
         if col == 1:
             ax_hist.axvline(PARIS_15, color='#65C06C', linewidth=1.2, linestyle='--')
@@ -432,13 +442,14 @@ def _estimate_figure(temperature, stages, truth=None):
         if true_value is not None:
             for ax in (ax_hist, ax_bar):
                 ax.axvline(true_value, color='white', linewidth=2.0, linestyle=':')
-            ax_hist.text(true_value, ax_hist.get_ylim()[1] * 0.95, f' oikea arvo {true_value:.2f}',
+            ax_hist.text(true_value, ax_hist.get_ylim()[1] * 0.95, f' oikea arvo {_fi(true_value, 2)}',
                          color='white', fontsize=9, va='top')
         ax_hist.set_title(title, color='white', fontsize=11)
         ax_hist.set_yticks([])
         ax_bar.set_yticks([])
         ax_bar.set_ylim(n_stages - 0.4, -0.6)    # oldest stage on top
         ax_bar.set_xlabel(xlabel, color='white')
+        ax_bar.xaxis.set_major_formatter(COMMA_TICKS)
     # Legend above the panels, so it never hides the histograms or the true-value label
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='upper center', ncol=len(labels), frameon=False,
@@ -468,7 +479,7 @@ def _show_estimates(cuts, netzero_years, upto_screen, truth=None):
         change = (probabilities[level] - prior_probabilities[level]) * 100
         if newest != 'prior' and abs(change) >= 0.5:   # no "-0" arrows for rounding noise
             delta = f'{change:+.0f} %-yks. alkuarviosta'
-        col.metric(f'yli {level:g} °C'.replace('.', ','), f'{probabilities[level] * 100:.0f} %',
+        col.metric(f'yli {_fi(level, 1)} °C'.replace(',0 ', ' '), f'{probabilities[level] * 100:.0f} %',
                    delta=delta, delta_color='inverse')
     return temperature, stages
 
@@ -507,7 +518,7 @@ def _impacts_page():
     selected = st.radio(
         'Lämpenemistaso',
         options=[1.5, 2.0, 3.0, 4.0],
-        format_func=lambda x: f'+{x} °C',
+        format_func=lambda x: f'+{_fi(x, 1)} °C',
         horizontal=True,
         key='impacts_temp',
         label_visibility='collapsed',
@@ -520,7 +531,7 @@ def _impacts_page():
     st.markdown(
         f'<div style="text-align:center;padding:16px 0 24px 0">'
         f'<span style="font-size:3.5em;font-weight:900;color:{color}">'
-        f'+{selected} °C</span></div>',
+        f'+{_fi(selected, 1)} °C</span></div>',
         unsafe_allow_html=True,
     )
 
@@ -563,13 +574,13 @@ def _impacts_page():
     newest = list(stages)[-1]
     probability = _exceedance(temperature, stages[newest])[selected]
     decisions = 'lupauksillanne ja nollapäästövuosillanne' if netzero_years else 'lupauksillanne'
-    message = (f'📊 **Teidän {decisions}** lämpeneminen ylittää **+{selected} °C** vuonna '
+    message = (f'📊 **Teidän {decisions}** lämpeneminen ylittää **+{_fi(selected, 1)} °C** vuonna '
                f'{ESTIMATE_YEAR} todennäköisyydellä **{probability * 100:.0f} %** '
                f'({STAGE_STYLE[newest][0].lower()}).')
     if st.session_state['centred_decade'] is not None:
         decade_mean = st.session_state['centred_decade'][0]
         message += (f'  \nSimulaationne vuosikymmenen {CENTRED_WINDOW[0]}–{CENTRED_WINDOW[1]} '
-                    f'keskilämpötila: **+{decade_mean:.2f} °C**.')
+                    f'keskilämpötila: **+{_fi(decade_mean, 2)} °C**.')
     st.info(message)
 
     st.markdown(
@@ -647,7 +658,9 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
     x_scale = alt.Scale(domain=[year_start, x_end], nice=False, zero=False)
     y_scale = alt.Scale(domain=[y_min, y_max], nice=False, zero=False)
     x_enc = alt.X('x:Q', scale=x_scale, axis=alt.Axis(title='Vuosi', format='d'))
-    y_enc = alt.Y('T:Q', scale=y_scale, axis=alt.Axis(title='Lämpötila-anomalia (°C)'))
+    # Vega has no Finnish locale here, so the decimal comma is put in with a label expression
+    y_enc = alt.Y('T:Q', scale=y_scale, axis=alt.Axis(
+        title='Lämpötila-anomalia (°C)', labelExpr="replace(format(datum.value, '.1f'), '.', ',')"))
 
     # --- lines: observations, (Phase 1), model ---
     shown = yr_fut <= upto_year
@@ -671,6 +684,7 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
         dashes.append([6, 4])
     lines = pd.concat(parts, ignore_index=True)
     lines['vuosi'] = np.floor(lines['x']).astype(int)    # calendar year for the tooltip
+    lines['lämpötila'] = [_fi(value, 2) + ' °C' for value in lines['T']]
     layers = [
         alt.Chart(lines).mark_line(strokeWidth=2.2, clip=True).encode(
             x=x_enc, y=y_enc, detail='sarja:N', order='x:Q',
@@ -680,7 +694,7 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
                                       legend=None),
             tooltip=[alt.Tooltip('sarja:N', title='Sarja'),
                      alt.Tooltip('vuosi:Q', title='Vuosi', format='d'),
-                     alt.Tooltip('T:Q', title='°C', format='.2f')],
+                     alt.Tooltip('lämpötila:N', title='Lämpötila')],
         )
     ]
 
@@ -689,6 +703,7 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
                            for t, color, label in TEMP_ANNOTATIONS if t <= y_max])
     paris = pd.DataFrame([{'T': PARIS_15, 'väri': '#65C06C', 'nimi': '1,5 °C (Pariisin tavoite)'},
                           {'T': PARIS_20, 'väri': '#FFA73E', 'nimi': '2,0 °C (Pariisin raja)'}])
+    paris = paris[paris['T'] <= y_max]    # text marks are not clipped: drop labels above the plot
     layers += [
         alt.Chart(levels).mark_rule(strokeDash=[5, 4], strokeWidth=1.3).encode(
             y=alt.Y('T:Q', scale=y_scale), color=alt.Color('väri:N', scale=None)),
@@ -716,7 +731,7 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
         peak_temp = float(after.max())
         peak_year = int(after.year.values[after.values.argmax()])
         peak = pd.DataFrame({'x': [peak_year + 0.5], 'T': [peak_temp],
-                             'nimi': [f'Huippu: {peak_temp:.2f} °C ({peak_year})']})
+                             'nimi': [f'Huippu: {_fi(peak_temp, 2)} °C ({peak_year})']})
         layers += [
             alt.Chart(peak).mark_rule(strokeDash=[2, 3], color=OBS_COLOR).encode(x=x_enc),
             alt.Chart(peak).mark_point(size=90, filled=True, color=MODEL_COLOR).encode(x=x_enc, y=y_enc),
@@ -794,6 +809,7 @@ def _emissions_bar_chart(cuts):
     ax.set_xticks(x)
     ax.set_xticklabels([_plain_name(r) for r in regions], color='white', fontsize=9)
     ax.set_ylabel('GtCO₂/vuosi', color='white')
+    ax.yaxis.set_major_formatter(COMMA_TICKS)
     ax.tick_params(colors='white')
     ax.legend(facecolor='#1e2130', labelcolor='white', fontsize=9)
     for spine in ax.spines.values():
@@ -838,6 +854,7 @@ def _emissions_pathway_chart(cuts, netzero_years):
 
     ax.axvline(CHECKPOINT, color='white', linewidth=1, linestyle=':')
     ax.set_ylabel('GtCO₂/vuosi', color='white')
+    ax.yaxis.set_major_formatter(COMMA_TICKS)
     ax.set_xlabel('Vuosi', color='white')
     ax.set_xlim(BASE_YEAR, plot_end)
     ax.tick_params(colors='white')
@@ -938,8 +955,8 @@ def _screen_pledges():
             cuts[region] = cut
             em_chk = base_em * (1.0 - cut)
             st.caption(
-                f'{BASE_YEAR}: **{base_em:.1f}** GtCO₂/v  \n'
-                f'{CHECKPOINT}: **{em_chk:.1f}** GtCO₂/v'
+                f'{BASE_YEAR}: **{_fi(base_em, 1)}** GtCO₂/v  \n'
+                f'{CHECKPOINT}: **{_fi(em_chk, 1)}** GtCO₂/v'
             )
     st.session_state['cuts']          = cuts
     st.session_state['option_indices'] = option_indices
@@ -949,7 +966,7 @@ def _screen_pledges():
     change_str = (f'{total_cut_pct:.0f} % leikkaus' if total_cut_pct >= 0
                   else f'{-total_cut_pct:.0f} % kasvu')
     st.info(
-        f'**Yhteensä {CHECKPOINT}:** {total_chk:.1f} GtCO₂/vuosi  '
+        f'**Yhteensä {CHECKPOINT}:** {_fi(total_chk, 1)} GtCO₂/vuosi  '
         f'({change_str} vuoden {BASE_YEAR} tasosta)'
     )
     st.pyplot(_emissions_bar_chart(cuts))
@@ -960,10 +977,10 @@ def _screen_pledges():
     st.info(
         '**Alkuarvio lämpötilasta** (keskiarvo ja 95 %:n väli – emme vielä tiedä, '
         'kuinka herkkä maapallomme on):  \n'
-        f'{CHECKPOINT}: **{est_40.mean():.1f} °C** '
-        f'({est_40.quantile(0.025):.1f}–{est_40.quantile(0.975):.1f} °C)  \n'
-        f'{ESTIMATE_YEAR}: **{est_end.mean():.1f} °C** '
-        f'({est_end.quantile(0.025):.1f}–{est_end.quantile(0.975):.1f} °C)'
+        f'{CHECKPOINT}: **{_fi(est_40.mean(), 1)} °C** '
+        f'({_fi(est_40.quantile(0.025), 1)}–{_fi(est_40.quantile(0.975), 1)} °C)  \n'
+        f'{ESTIMATE_YEAR}: **{_fi(est_end.mean(), 1)} °C** '
+        f'({_fi(est_end.quantile(0.025), 1)}–{_fi(est_end.quantile(0.975), 1)} °C)'
     )
     st.caption(
         f'Oletus {CHECKPOINT} jälkeen: kunkin alueen päästöt muuttuvat vuosittain yhtä paljon kuin '
@@ -1048,10 +1065,10 @@ def _screen_sim1():
         highlight_year=CHECKPOINT, decade=st.session_state['centred_decade'],
     )
     col_obs, col_single, col_decade = st.columns(3)
-    col_obs.metric(f'Havaittu {ANIM_START - 1}', f'+{obs_last:.2f} °C')
-    col_single.metric(f'Vuosi {CHECKPOINT}', f'+{t_single:.2f} °C')
-    col_decade.metric(f'Keskiarvo {CENTRED_WINDOW[0]}–{CENTRED_WINDOW[1]}', f'+{decade_mean:.2f} °C',
-                      help=f'95 %:n väli {decade_lo:.2f}–{decade_hi:.2f} °C, koska vuodet '
+    col_obs.metric(f'Havaittu {ANIM_START - 1}', f'+{_fi(obs_last, 2)} °C')
+    col_single.metric(f'Vuosi {CHECKPOINT}', f'+{_fi(t_single, 2)} °C')
+    col_decade.metric(f'Keskiarvo {CENTRED_WINDOW[0]}–{CENTRED_WINDOW[1]}', f'+{_fi(decade_mean, 2)} °C',
+                      help=f'95 %:n väli {_fi(decade_lo, 2)}–{_fi(decade_hi, 2)} °C, koska vuodet '
                            f'{OBS_WINDOW[1] + 1}–{CENTRED_WINDOW[1]} on arvioitu')
 
     # Paris thresholds refer to long-term warming, so the verdict uses the decade centred on 2040.
@@ -1075,8 +1092,8 @@ def _screen_sim1():
         'arvioitu (katkoviiva ja varjostus).'
     )
     if single_above != decade_above:
-        st.info(f'💡 Huomatkaa: vuosi {CHECKPOINT} ({t_single:.2f} °C) ja vuosikymmenen keskiarvo '
-                f'({decade_mean:.2f} °C) ovat eri puolilla 1,5 °C:n rajaa. Yksi vuosi ei vielä kerro, '
+        st.info(f'💡 Huomatkaa: vuosi {CHECKPOINT} ({_fi(t_single, 2)} °C) ja vuosikymmenen keskiarvo '
+                f'({_fi(decade_mean, 2)} °C) ovat eri puolilla 1,5 °C:n rajaa. Yksi vuosi ei vielä kerro, '
                 'onko raja ylitetty.')
     st.caption('Oikeassa maailmassa vuosi 2024 oli ensimmäinen yli 1,5 °C:n vuosi (1,51 °C), mutta '
                'vuosien 2016–2025 keskiarvo oli 1,26 °C (IGCC-2025a).')
@@ -1092,7 +1109,7 @@ def _screen_obs2040():
     st.markdown(
         f'Vuoden {CHECKPOINT} lopussa tiedämme, kuinka paljon meidän maapallomme lämpeni. '
         f'Mitattu keskilämpötila vuosina {OBS_WINDOW[0]}–{OBS_WINDOW[1]}: '
-        f'**{observed:.2f} °C** (mittausepävarmuus ±{1.96 * OBS_2040_SD:.1f} °C).  \n'
+        f'**{_fi(observed, 2)} °C** (mittausepävarmuus ±{_fi(1.96 * OBS_2040_SD, 1)} °C).  \n'
         'Maapallot, joiden lämpeneminen sopii tähän mittaukseen, muuttuvat todennäköisemmiksi.'
     )
     temperature, stages = _show_estimates(st.session_state['cuts'], None, 'obs2040')
@@ -1101,9 +1118,9 @@ def _screen_obs2040():
     t_old, t_new = _interval_width_change(temperature, stages, 'prior', 'obs2040')
     ecs_narrowing = 1 - ecs_new / ecs_old
     message = (
-        f'Ilmastoherkkyyden 95 %:n väli kapeni **{ecs_old:.1f} → {ecs_new:.1f} °C** '
+        f'Ilmastoherkkyyden 95 %:n väli kapeni **{_fi(ecs_old, 1)} → {_fi(ecs_new, 1)} °C** '
         f'({ecs_narrowing * 100:.0f} %), vuoden {ESTIMATE_YEAR} lämpenemisen '
-        f'**{t_old:.1f} → {t_new:.1f} °C** ({(1 - t_new / t_old) * 100:.0f} %). '
+        f'**{_fi(t_old, 1)} → {_fi(t_new, 1)} °C** ({(1 - t_new / t_old) * 100:.0f} %). '
     )
     # Typically (median over simulated games) the ECS interval narrows by only ~20 %; it narrows
     # much more when the drawn member is in a tail of the ensemble. Describe the actual case.
@@ -1113,7 +1130,7 @@ def _screen_obs2040():
         prior_mean = _window_mean_members(st.session_state['cuts'], OBS_WINDOW).mean()
         direction = 'vähemmän' if observed < prior_mean else 'enemmän'
         message += (f'Tällä kertaa havainto kertoi paljon, koska maapallomme lämpeni selvästi '
-                    f'{direction} kuin maapallot keskimäärin ({prior_mean:.2f} °C). Yleensä '
+                    f'{direction} kuin maapallot keskimäärin ({_fi(prior_mean, 2)} °C). Yleensä '
                     'arvio tarkentuu tässä vaiheessa vain vähän.')
     st.info(message)
     with st.expander('Miksi 15 vuoden lämpeneminen kertoo ilmastoherkkyydestä yleensä niin vähän?'):
@@ -1137,16 +1154,16 @@ def _screen_research():
     st.markdown(
         f'Vuoteen {CHECKPOINT} mennessä tutkijat ovat oppineet lisää esimerkiksi muinaisilmastoista '
         'ja pilvien käyttäytymisestä. Uusi tutkimus arvioi meidän maapallomme ilmastoherkkyydeksi '
-        f'**{clue:.1f} °C ± {1.96 * ECS_CLUE_SD:.1f} °C** (95 %:n väli).'
+        f'**{_fi(clue, 1)} °C ± {_fi(1.96 * ECS_CLUE_SD, 1)} °C** (95 %:n väli).'
     )
     temperature, stages = _show_estimates(st.session_state['cuts'], None, 'research')
     ecs = _load_screened()['ECS']
     ecs_old, ecs_new = _interval_width_change(ecs, stages, 'prior', 'research')
     t_old, t_new = _interval_width_change(temperature, stages, 'prior', 'research')
     st.info(
-        f'Alkuarvioon verrattuna ilmastoherkkyyden 95 %:n väli kapeni **{ecs_old:.1f} → '
-        f'{ecs_new:.1f} °C** ({(1 - ecs_new / ecs_old) * 100:.0f} %), vuoden {ESTIMATE_YEAR} '
-        f'lämpenemisen **{t_old:.1f} → {t_new:.1f} °C** ({(1 - t_new / t_old) * 100:.0f} %).'
+        f'Alkuarvioon verrattuna ilmastoherkkyyden 95 %:n väli kapeni **{_fi(ecs_old, 1)} → '
+        f'{_fi(ecs_new, 1)} °C** ({(1 - ecs_new / ecs_old) * 100:.0f} %), vuoden {ESTIMATE_YEAR} '
+        f'lämpenemisen **{_fi(t_old, 1)} → {_fi(t_new, 1)} °C** ({(1 - t_new / t_old) * 100:.0f} %).'
     )
     with st.expander('Miksi lämpenemisen arvio ei tarkentunut yhtä paljon kuin ECS?'):
         st.markdown(
@@ -1181,7 +1198,7 @@ def _screen_phase2():
             nz     = _nz_input(region, min_nz, netzero_indices)
             netzero_years[region] = nz
             em_chk = REGION_EMISSIONS_BASE_GTCO2[region] * (1 - cuts.get(region, 0.0))
-            st.caption(f'{CHECKPOINT}: {em_chk:.1f} GtCO₂/v → 0 vuoteen **{nz}**')
+            st.caption(f'{CHECKPOINT}: {_fi(em_chk, 1)} GtCO₂/v → 0 vuoteen **{nz}**')
     st.session_state['netzero_years']   = netzero_years
     st.session_state['netzero_indices'] = netzero_indices
 
@@ -1248,8 +1265,8 @@ def _screen_reveal():
     true_ecs = st.session_state['ecs']
     true_temp = float(st.session_state['temp_phase2'].sel(year=ESTIMATE_YEAR))
     st.markdown(
-        f'Meidän maapallomme ilmastoherkkyys oli **{true_ecs:.2f} °C**, ja teidän päätöksillänne '
-        f'se lämpeni vuoteen {ESTIMATE_YEAR} mennessä **{true_temp:.2f} °C**.'
+        f'Meidän maapallomme ilmastoherkkyys oli **{_fi(true_ecs, 2)} °C**, ja teidän päätöksillänne '
+        f'se lämpeni vuoteen {ESTIMATE_YEAR} mennessä **{_fi(true_temp, 2)} °C**.'
     )
     temperature, stages = _show_estimates(cuts, netzero_years, 'reveal',
                                           truth=(true_ecs, true_temp))
@@ -1263,11 +1280,11 @@ def _screen_reveal():
     for name, values, true_value in checks:
         mean, lo, hi = weighted_mean_interval(values, final)
         if lo <= true_value <= hi:
-            st.success(f'🎯 {name}: oikea arvo {true_value:.2f} °C osui arvion 95 %:n välille '
-                       f'({lo:.2f}–{hi:.2f} °C, paras arvio {mean:.2f} °C).')
+            st.success(f'🎯 {name}: oikea arvo {_fi(true_value, 2)} °C osui arvion 95 %:n välille '
+                       f'({_fi(lo, 2)}–{_fi(hi, 2)} °C, paras arvio {_fi(mean, 2)} °C).')
         else:
-            st.warning(f'😮 {name}: oikea arvo {true_value:.2f} °C jäi arvion 95 %:n välin '
-                       f'({lo:.2f}–{hi:.2f} °C) ulkopuolelle. Näin käy noin kerran 20 pelistä – '
+            st.warning(f'😮 {name}: oikea arvo {_fi(true_value, 2)} °C jäi arvion 95 %:n välin '
+                       f'({_fi(lo, 2)}–{_fi(hi, 2)} °C) ulkopuolelle. Näin käy noin kerran 20 pelistä – '
                        'se kuuluu epävarmuuteen.')
     st.markdown(
         '**Mitä tästä opimme?** Emme voi tietää etukäteen, kuinka herkkä maapallo on. Päätökset on '
