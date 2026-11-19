@@ -18,7 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.transforms import blended_transform_factory
 
-from fair_runner import load_screened_configs, load_observed_gmst, run_fair_ssp
+from fair_runner import load_screened_configs, load_observed_gmst, run_fair_ssp, annual_series
 
 # ── Scenario settings ──────────────────────────────────────────────────────────
 SSPS = {
@@ -96,16 +96,17 @@ def _run_all_simulations(quantile_configs):
     """
     Run FaIR for every (SSP, ECS quantile) combination.
 
-    Returns a nested dict: results[ssp_label][q_label] -> temperature DataArray.
-    Prints progress so the user can see the six runs completing.
+    Returns a nested dict: results[ssp_label][q_label] -> annual-mean temperature DataArray
+    (dim 'year'). Prints progress so the user can see the six runs completing.
     """
     results = {}
     for ssp_label, ssp_key in SSPS.items():
         results[ssp_label] = {}
         for q_label, cfg_id in quantile_configs.items():
             print(f'  Running {ssp_label} / {q_label} (config {cfg_id}) …', flush=True)
-            temp = run_fair_ssp(ssp_key, cfg_id, year_end=YEAR_END)
-            results[ssp_label][q_label] = temp
+            # The annual mean of YEAR_END needs timebound YEAR_END + 1
+            temp = run_fair_ssp(ssp_key, cfg_id, year_end=YEAR_END + 1)
+            results[ssp_label][q_label] = annual_series(temp)
     print()
     return results
 
@@ -142,14 +143,14 @@ def _make_figure(results, obs_gmst, include_low=False, include_high=False):
     for ssp_label in SSPS:
         for q_label in QUANTILES:
             temp = results[ssp_label][q_label]
-            vals = temp.sel(timebounds=slice(YEAR_START, YEAR_END)).values
+            vals = temp.sel(year=slice(YEAR_START, YEAR_END)).values
             all_temps.extend(vals[~np.isnan(vals)])
     obs_crop = obs_gmst[obs_gmst['year'] >= YEAR_START]
     all_temps.extend(obs_crop['gmst'].values)
 
     y_min = min(all_temps) - 0.15
     y_max = max(all_temps) + 0.45
-    ax.set_xlim(YEAR_START, YEAR_END)
+    ax.set_xlim(YEAR_START, YEAR_END + 1)
     ax.set_ylim(y_min, y_max)
 
     # ── Observed GMST ──────────────────────────────────────────────────────────
@@ -175,13 +176,13 @@ def _make_figure(results, obs_gmst, include_low=False, include_high=False):
     for ssp_label, ssp_color in SSP_COLORS.items():
         for q_label in q_order:
             temp = results[ssp_label][q_label]
-            years = temp.timebounds.values
+            years = temp.year.values
             mask = (years >= 2026) & (years <= YEAR_END)
             style = QUANTILE_STYLES[q_label]
 
-            # Legend entry only for median line of each SSP
+            # Legend entry only for median line of each SSP. Annual means at mid-year, like IGCC.
             label = SSP_LABELS[ssp_label] if q_label == 'q50' else None
-            ax.plot(years[mask], temp.values[mask],
+            ax.plot(years[mask] + 0.5, temp.values[mask],
                     color=ssp_color, zorder=5,
                     label=label, **style)
 
@@ -265,8 +266,8 @@ def main():
     obs_gmst = load_observed_gmst()
 
     # Sanity check: SSP1-1.9 median 2100 temperature
-    t119 = results['SSP1-1.9']['q50'].sel(timebounds=2100).item()
-    t245 = results['SSP2-4.5']['q50'].sel(timebounds=2100).item()
+    t119 = results['SSP1-1.9']['q50'].sel(year=2100).item()
+    t245 = results['SSP2-4.5']['q50'].sel(year=2100).item()
     print(f'Median ECS warming at 2100:  SSP1-1.9 = {t119:.2f} °C,  SSP2-4.5 = {t245:.2f} °C')
     print('  (expected roughly 1.3–1.6 °C and 2.2–2.8 °C respectively)\n')
 

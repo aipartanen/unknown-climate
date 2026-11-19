@@ -6,17 +6,24 @@ players an estimate of the warming (with uncertainty) from their choices without
 Run once offline (after precompute_configs.py):
     python precompute_estimates.py
 
-Produces: data/estimate_emulator.csv  (config_id, a_2040, b_2040, a_2100, b_2100)
+Produces: data/estimate_emulator.csv  (config_id, a_Y, b_Y for every Y in TARGET_YEARS)
           figures/estimate_emulator_diagnostics.png
 
 MODEL
 -----
-For every screened member i and target year Y in (2040, 2100):
+For every screened member i and target year Y in TARGET_YEARS:
 
     T_i(Y) = a_i,Y + b_i,Y * C_Y
 
-where T_i(Y) is the FaIR temperature (timebound Y, °C re. 1850-1900, the seeded stochastic run
-used in the game) and C_Y is the cumulative game CO2 FFI emission FIRST_OVERRIDE_YEAR (2023)..Y-1 in 1000 GtCO2.
+where T_i(Y) is the FaIR annual-mean temperature of year Y (mean of timebounds Y and Y+1,
+°C re. 1850-1900, the seeded stochastic run used in the game) and C_Y is the cumulative game
+CO2 FFI emission FIRST_OVERRIDE_YEAR (2023)..Y in 1000 GtCO2.
+
+TARGET YEARS
+------------
+Every year 2031-2045, so that the app can form decadal means around the 2040 checkpoint
+(the trailing 2031-2040 mean that players "observe", and the 2035-2044 mean centred on 2040
+used to judge the Paris thresholds), plus 2100 for the end-of-century estimate.
 
 WHY LINEAR IN CUMULATIVE CO2
 ----------------------------
@@ -44,8 +51,9 @@ import matplotlib.pyplot as plt
 import fair_runner as fr
 
 N_SCENARIOS_EACH = 15       # 15 Phase 1 style + 15 Phase 2 style decision sets
-TARGET_YEARS = (2040, 2100)
-RUN_END = max(TARGET_YEARS)  # last timebound needed
+TARGET_YEARS = tuple(range(2031, 2046)) + (2100,)
+DIAGNOSTIC_YEARS = (2040, 2100)   # years shown in the diagnostics figure (all are printed)
+RUN_END = max(TARGET_YEARS) + 1   # last timebound needed: annual mean of Y needs timebound Y+1
 # Cut range spans the radio options (India Passiivinen = -80 %, i.e. +80 % growth) up to the
 # strongest pledges (-90 %). Net-zero years span the slider/radio range (2041..~2240).
 CUT_RANGE = (-0.8, 0.95)
@@ -72,7 +80,7 @@ def run_members(cuts, netzero_years, config_ids):
     f.run()
     temp = f.temperature.sel(layer=0, scenario='game')
     temp = fr.rebase_to_1850_1900(temp)
-    return {year: temp.sel(timebounds=year).values for year in TARGET_YEARS}
+    return {year: fr.annual_mean(temp, year).values for year in TARGET_YEARS}
 
 
 def main(n_each=N_SCENARIOS_EACH, config_ids=None, write=True):
@@ -95,8 +103,8 @@ def main(n_each=N_SCENARIOS_EACH, config_ids=None, write=True):
         print(f'  scenario {s + 1}/{n_scen} done', flush=True)
 
     coefficients = pd.DataFrame(index=pd.Index(config_ids, name='config_id'))
-    fig, axes = plt.subplots(2, len(TARGET_YEARS), figsize=(11, 7))
-    for col, y in enumerate(TARGET_YEARS):
+    fig, axes = plt.subplots(2, len(DIAGNOSTIC_YEARS), figsize=(11, 7))
+    for y in TARGET_YEARS:
         x = cumulative[y]
         # Per-member least squares line T = a + b x, vectorised over members.
         slope, intercept = np.polyfit(x, temp[y], 1)
@@ -117,14 +125,17 @@ def main(n_each=N_SCENARIOS_EACH, config_ids=None, write=True):
               f'ensemble sd within a decision set {spread:.2f} degC')
 
         # Sanity plots of the intermediate result: the fits and the leave-one-out errors.
+        if y not in DIAGNOSTIC_YEARS:
+            continue
+        col = DIAGNOSTIC_YEARS.index(y)
         ax = axes[0, col]
         for i in range(0, len(config_ids), max(1, len(config_ids) // 40)):
             ax.plot(x, temp[y][:, i], '.', color='tab:blue', alpha=0.3)
         xs = np.linspace(x.min(), x.max(), 20)
         for i in range(0, len(config_ids), max(1, len(config_ids) // 40)):
             ax.plot(xs, intercept[i] + slope[i] * xs, color='k', alpha=0.15, linewidth=0.7)
-        ax.set_xlabel(f'Cumulative CO2 {fr.FIRST_OVERRIDE_YEAR}..{y - 1} (1000 GtCO2)')
-        ax.set_ylabel(f'T {y} (°C)')
+        ax.set_xlabel(f'Cumulative CO2 {fr.FIRST_OVERRIDE_YEAR}..{y} (1000 GtCO2)')
+        ax.set_ylabel(f'T {y}, annual mean (°C)')
         ax.set_title(f'T{y}: ~40 members, FaIR (dots) and linear fit (lines)')
         ax = axes[1, col]
         ax.hist(loo_err.ravel(), bins=60, color='tab:orange')

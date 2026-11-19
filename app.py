@@ -26,6 +26,7 @@ from fair_runner import (
     load_screened_configs,
     load_observed_gmst,
     run_fair_game,
+    annual_series,
     regional_emissions_in_year,
     emulate_temperature,
     posterior_weights,
@@ -275,7 +276,7 @@ def _reveal_banner(temp):
     st.success(
         '🔎 **Paljastus:** tämän kierroksen ilmastomallin '
         f'ECS oli **{st.session_state["ecs"]:.2f} °C** ja '
-        f'lämpötila {ESTIMATE_YEAR} **{float(temp.sel(timebounds=ESTIMATE_YEAR)):.2f} °C**.'
+        f'lämpötila {ESTIMATE_YEAR} **{float(temp.sel(year=ESTIMATE_YEAR)):.2f} °C**.'
     )
 
 
@@ -339,7 +340,7 @@ def _impacts_page():
     # Cross-reference with Phase 1 simulation result if available
     if st.session_state.get('temp_phase1') is not None:
         temp  = st.session_state['temp_phase1']
-        t_chk = float(temp.sel(timebounds=CHECKPOINT))
+        t_chk = float(temp.sel(year=CHECKPOINT))
         closest = min(IMPACTS.keys(), key=lambda x: abs(x - t_chk))
         st.markdown('---')
         st.info(
@@ -384,7 +385,9 @@ def _make_temperature_animation(temp_da, year_start, year_end,
     line from ANIM_START onward, drawn year-by-year. The simulation is not shown over the
     observed period. Returns an HTML string for components.html().
 
-    temp_da        : xr.DataArray dim 'timebounds', single config
+    Both series are annual means plotted at mid-year (Y + 0.5), as the IGCC file stamps them.
+
+    temp_da        : xr.DataArray dim 'year' (annual means, see annual_series), single config
     phase1_da      : if given, draw Phase 1 trajectory as grey dashed line (static)
     highlight_year : dotted vertical line (Phase 1: CHECKPOINT; Phase 2: peak year)
     show_peak      : annotate peak with arrow on final animation frame
@@ -396,29 +399,30 @@ def _make_temperature_animation(temp_da, year_start, year_end,
     fig.patch.set_facecolor('#0e1117')
     ax.set_facecolor('#0e1117')
 
-    years  = temp_da.timebounds.values
+    years  = temp_da.year.values
     mask   = (years >= year_start) & (years <= year_end)
     yr     = years[mask]
-    t_vals = temp_da.isel(timebounds=mask).values
+    t_vals = temp_da.isel(year=mask).values
 
     # Only the part after the observed record is shown
     fut_mask = yr >= ANIM_START
     yr_fut   = yr[fut_mask]
     t_fut    = t_vals[fut_mask]
+    x_fut    = yr_fut + 0.5    # mid-year, like the observations
 
     obs_mask = (gmst['year'] >= year_start) & (gmst['year'] <= min(ANIM_START, year_end))
 
     # Fix axis limits before drawing so text placements are stable
     y_min = min(float(gmst.loc[obs_mask, 'gmst'].min()), 0.0) - 0.15
     y_max = max(float(t_fut.max()), float(gmst.loc[obs_mask, 'gmst'].max())) + 0.45
-    ax.set_xlim(year_start, year_end)
+    ax.set_xlim(year_start, year_end + 1)
     ax.set_ylim(y_min, y_max)
 
     # --- static elements ---
     if phase1_da is not None:
-        yr1 = phase1_da.timebounds.values
+        yr1 = phase1_da.year.values
         m1  = (yr1 >= ANIM_START) & (yr1 <= CHECKPOINT)
-        ax.plot(yr1[m1], phase1_da.isel(timebounds=m1).values,
+        ax.plot(yr1[m1] + 0.5, phase1_da.isel(year=m1).values,
                 color='#888888', linewidth=2.5, linestyle='--', label='Vaihe 1')
 
     ax.plot(gmst.loc[obs_mask, 'year'], gmst.loc[obs_mask, 'gmst'],
@@ -448,9 +452,9 @@ def _make_temperature_animation(temp_da, year_start, year_end,
                 linespacing=1.55, clip_on=False)
 
     if highlight_year is not None:
-        ax.axvline(highlight_year, color='white', linewidth=1.2, linestyle=':')
+        ax.axvline(highlight_year + 0.5, color='white', linewidth=1.2, linestyle=':')
         if not show_peak:
-            ax.text(highlight_year + 1, y_min + 0.05, str(highlight_year),
+            ax.text(highlight_year + 1.5, y_min + 0.05, str(highlight_year),
                     color='white', fontsize=9)
 
     ax.set_xlabel('Vuosi', color='white')
@@ -467,13 +471,13 @@ def _make_temperature_animation(temp_da, year_start, year_end,
     # on the final frame, after the rest of the simulated line. Plot only: the FaIR results
     # themselves are not modified.
     jump_line, = ax.plot([], [], color='#5A84E2', linewidth=2.5)
-    jump_x = [gmst.loc[obs_mask, 'year'].iloc[-1], yr_fut[0]]
+    jump_x = [gmst.loc[obs_mask, 'year'].iloc[-1], x_fut[0]]
     jump_y = [gmst.loc[obs_mask, 'gmst'].iloc[-1], t_fut[0]]
 
     n_frames = len(yr_fut)
 
     def update(frame):
-        model_line.set_data(yr_fut[:frame + 1], t_fut[:frame + 1])
+        model_line.set_data(x_fut[:frame + 1], t_fut[:frame + 1])
         # On the final frame, add annotations that summarise the result
         if frame == n_frames - 1:
             jump_line.set_data(jump_x, jump_y)
@@ -482,8 +486,8 @@ def _make_temperature_animation(temp_da, year_start, year_end,
                 peak_yr   = int(yr[t_vals.argmax()])
                 ax.annotate(
                     f'Huippu: {peak_temp:.2f} °C ({peak_yr})',
-                    xy=(peak_yr, peak_temp),
-                    xytext=(peak_yr + 5, peak_temp + 0.1),
+                    xy=(peak_yr + 0.5, peak_temp),
+                    xytext=(peak_yr + 5.5, peak_temp + 0.1),
                     color='white', fontsize=10,
                     arrowprops=dict(arrowstyle='->', color='white', lw=1.5),
                 )
@@ -718,12 +722,13 @@ def _phase1():
                 netzero_years=None,
                 config_id=cfg_id,
             )
-            st.session_state['temp_phase1'] = temp
+            # Everything shown is an annual mean (year Y = mean of timebounds Y and Y+1)
+            st.session_state['temp_phase1'] = annual_series(temp)
         st.rerun()
 
     if st.session_state['temp_phase1'] is not None:
         temp   = st.session_state['temp_phase1']
-        t_chk = float(temp.sel(timebounds=CHECKPOINT))
+        t_chk = float(temp.sel(year=CHECKPOINT))
         _obs = _load_gmst()
         obs_last = float(_obs.loc[np.floor(_obs['year']) == ANIM_START - 1, 'gmst'].iloc[0])   # IGCC observed, last year of the record
 
@@ -785,18 +790,18 @@ def _phase2():
                 netzero_years=netzero_years,
                 config_id=st.session_state['config_id'],
             )
-            st.session_state['temp_phase2'] = temp
+            st.session_state['temp_phase2'] = annual_series(temp)
         st.rerun()
 
     if st.session_state['temp_phase2'] is not None:
         temp2 = st.session_state['temp_phase2']
         temp1 = st.session_state['temp_phase1']
 
-        after_chk = temp2.sel(timebounds=temp2.timebounds > CHECKPOINT)
+        after_chk = temp2.sel(year=temp2.year > CHECKPOINT)
         peak_temp = float(after_chk.max())
-        peak_yr   = int(after_chk.timebounds.values[after_chk.values.argmax()])
+        peak_yr   = int(after_chk.year.values[after_chk.values.argmax()])
 
-        sim_end = int(temp2.timebounds.max())
+        sim_end = int(temp2.year.max())
         display_end = min(peak_yr + 30, sim_end)
 
         st.subheader('📊 Simulaatiotulokset')

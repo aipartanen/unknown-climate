@@ -133,6 +133,20 @@ def annual_mean(temp: xr.DataArray, year: int) -> xr.DataArray:
     return 0.5 * (temp.sel(timebounds=year) + temp.sel(timebounds=year + 1))
 
 
+def annual_series(temp: xr.DataArray) -> xr.DataArray:
+    """
+    Annual means of every complete year of a timebounds series, on a new integer dim 'year'.
+
+    Year Y is the mean of timebounds Y and Y+1 (see annual_mean), so a run whose last timebound
+    is E gives annual means up to year E-1. Everything the game shows or uses is an annual mean;
+    plot it at mid-year (Y + 0.5) to line up with the IGCC observations.
+    """
+    values = 0.5 * (temp.isel(timebounds=slice(None, -1)).values
+                    + temp.isel(timebounds=slice(1, None)).values)
+    years = temp.timebounds.values[:-1].astype(int)
+    return xr.DataArray(values, coords={'year': years}, dims=['year'])
+
+
 def extrapolate_after_checkpoint(em_base: float, em_chk: float, years: np.ndarray) -> np.ndarray:
     """
     Regional CO2 emissions (GtCO₂/yr) after CHECKPOINT_YEAR when no net-zero year is chosen
@@ -221,12 +235,13 @@ def regional_emissions_in_year(cuts: dict, year: int) -> dict:
 def cumulative_co2(cuts: dict, netzero_years: dict | None, temperature_year: int) -> float:
     """
     Cumulative game CO2 FFI emissions (GtCO₂) from FIRST_OVERRIDE_YEAR up to and including
-    temperature_year − 1.
+    temperature_year.
 
-    FaIR temperature is on timebounds (1 Jan) and is driven by the emissions of the preceding
-    years, so the temperature of timebound Y depends on the emissions up to year Y − 1.
+    The game temperature of year Y is the annual mean, i.e. the mean of timebounds Y and Y+1.
+    FaIR timebound Y+1 (1 Jan) is driven by the emissions up to and including year Y, so the
+    emissions of year Y are counted.
     """
-    trajectory = build_co2_fossil_trajectory(cuts, netzero_years, temperature_year)
+    trajectory = build_co2_fossil_trajectory(cuts, netzero_years, temperature_year + 1)
     return float(trajectory[FIRST_OVERRIDE_YEAR - 1750:].sum())
 
 
@@ -234,7 +249,8 @@ def cumulative_co2(cuts: dict, netzero_years: dict | None, temperature_year: int
 def load_estimate_emulator() -> pd.DataFrame:
     """
     Per-member linear emulator written by precompute_estimates.py:
-    T_year = a_year + b_year * (cumulative CO2 FIRST_OVERRIDE_YEAR..year-1 in 1000 GtCO₂), year in (2040, 2100).
+    T_year = a_year + b_year * (cumulative CO2 FIRST_OVERRIDE_YEAR..year in 1000 GtCO₂), where
+    T_year is the annual mean of `year` and year is one of precompute_estimates.TARGET_YEARS.
     """
     if not ESTIMATE_EMULATOR_PATH.exists():
         raise FileNotFoundError(
@@ -273,7 +289,7 @@ def weighted_mean_interval(values: pd.Series, weights: pd.Series, level: float =
 
 def emulate_temperature(cuts: dict, netzero_years: dict | None, year: int) -> pd.Series:
     """
-    Fast (no FaIR) temperature estimate (°C re. 1850–1900, timebound `year`) for every
+    Fast (no FaIR) temperature estimate (°C re. 1850–1900, annual mean of `year`) for every
     screened member, indexed by config_id.
     """
     emulator = load_estimate_emulator()
