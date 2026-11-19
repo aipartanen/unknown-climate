@@ -1081,7 +1081,9 @@ def _screen_sim1():
 
     _show_temperature_animation(
         f'sim1-{st.session_state["config_id"]}',
-        temp_da=temp, year_start=1900, year_end=CHECKPOINT,
+        # From 1960 (most of the warming, little flat early record) so that the 2035-2044
+        # decade bar and the single year 2040 are large enough to compare
+        temp_da=temp, year_start=1960, year_end=CHECKPOINT,
         highlight_year=CHECKPOINT, decade=st.session_state['centred_decade'],
     )
     col_obs, col_single, col_decade = st.columns(3)
