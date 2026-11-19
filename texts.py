@@ -94,7 +94,6 @@ TEXTS = {
     # --- temperature chart ---
     'series_obs': {'fi': 'Havaittu', 'en': 'Observed'},
     'series_model': {'fi': 'Ilmastomalli', 'en': 'Climate model'},
-    'series_phase1': {'fi': 'Vaihe 1', 'en': 'Phase 1'},
     'tt_series': {'fi': 'Sarja', 'en': 'Series'},
     'tt_temp': {'fi': 'Lämpötila', 'en': 'Temperature'},
     'paris_15': {'fi': '1,5 °C (Pariisin tavoite)', 'en': '1.5 °C (Paris goal)'},

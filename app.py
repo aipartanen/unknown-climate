@@ -716,7 +716,7 @@ def _nav_bar():
 
 
 def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
-                       phase1_da=None, highlight_year=None, show_peak=False, decade=None):
+                       highlight_year=None, show_peak=False, decade=None):
     """
     Altair chart of the temperature trajectory: observations (up to 2025) and the simulated
     annual means from ANIM_START up to upto_year (the animation reveals the line year by year).
@@ -725,10 +725,8 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
     Colours are chosen to read on both the light and the dark Streamlit theme.
 
     temp_da        : xr.DataArray dim 'year' (annual means, see annual_series), single config
-    phase1_da      : if given, the Phase 1 trajectory as a grey dashed line
     highlight_year : dotted vertical line (Phase 1: CHECKPOINT)
-    final          : add the summary marks: the step from the last observation to the first
-                     model year, the peak (show_peak) and the decade bar (decade)
+    final          : add the summary marks: the peak (show_peak) and the decade bar (decade)
     decade         : (mean, lo, hi) of the CENTRED_WINDOW mean: solid over the known years,
                      dashed and shaded over the projected ones. Extends the x axis.
     """
@@ -754,28 +752,18 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
         label_expr = f"replace({label_expr}, '.', ',')"
     y_enc = alt.Y('T:Q', scale=y_scale, axis=alt.Axis(title=t('axis_temp'), labelExpr=label_expr))
 
-    # --- lines: observations, (Phase 1), model ---
+    # --- lines: observations, model ---
     shown = yr_fut <= upto_year
     model = pd.DataFrame({'x': yr_fut[shown] + 0.5, 'T': t_fut[shown]})
-    if final:
-        # The step from the last observed year to the first model year is drawn only on the
-        # final frame, after the rest of the line (plot only, the results are not modified).
-        first = pd.DataFrame({'x': [float(obs['year'].iloc[-1])], 'T': [float(obs['gmst'].iloc[-1])]})
-        model = pd.concat([first, model], ignore_index=True)
+    # The model line starts from the last observed year, so the step from the observations to
+    # the first model year is part of every frame (plot only, the results are not modified).
+    first = pd.DataFrame({'x': [float(obs['year'].iloc[-1])], 'T': [float(obs['gmst'].iloc[-1])]})
+    model = pd.concat([first, model], ignore_index=True)
     # Series names are the legend entries, so they are in the current language
     model['sarja'] = t('series_model')
     observed = pd.DataFrame({'x': obs['year'].values, 'T': obs['gmst'].values, 'sarja': t('series_obs')})
-    parts = [observed, model]
-    series, colors, dashes = [t('series_obs'), t('series_model')], [OBS_COLOR, MODEL_COLOR], [[1, 0], [1, 0]]
-    if phase1_da is not None:
-        years1 = phase1_da.year.values
-        keep1 = (years1 >= ANIM_START) & (years1 <= CHECKPOINT)
-        parts.append(pd.DataFrame({'x': years1[keep1] + 0.5, 'T': phase1_da.values[keep1],
-                                   'sarja': t('series_phase1')}))
-        series.append(t('series_phase1'))
-        colors.append('#9AA0A6')
-        dashes.append([6, 4])
-    lines = pd.concat(parts, ignore_index=True)
+    series, colors = [t('series_obs'), t('series_model')], [OBS_COLOR, MODEL_COLOR]
+    lines = pd.concat([observed, model], ignore_index=True)
     lines['vuosi'] = np.floor(lines['x']).astype(int)    # calendar year for the tooltip
     lines['lämpötila'] = [_num(value, 2) + ' °C' for value in lines['T']]
     layers = [
@@ -783,8 +771,6 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
             x=x_enc, y=y_enc, detail='sarja:N', order='x:Q',
             color=alt.Color('sarja:N', scale=alt.Scale(domain=series, range=colors),
                             legend=alt.Legend(title=None, orient='bottom-right')),
-            strokeDash=alt.StrokeDash('sarja:N', scale=alt.Scale(domain=series, range=dashes),
-                                      legend=None),
             tooltip=[alt.Tooltip('sarja:N', title=t('tt_series')),
                      alt.Tooltip('vuosi:Q', title=t('axis_year'), format='d'),
                      alt.Tooltip('lämpötila:N', title=t('tt_temp'))],
@@ -869,7 +855,9 @@ def _show_temperature_animation(key, **chart_kwargs):
     if key not in played:
         years = [int(y) for y in temp_da.year.values if ANIM_START <= y <= year_end]
         step = max(1, int(np.ceil(len(years) / ANIM_MAX_FRAMES)))
-        frames = years[::step]
+        # Start from a frame with the observations only, so the step from the last observation
+        # to the first model year is drawn as an animation step like the later years
+        frames = [ANIM_START - 1] + years[::step]
         for upto_year in frames:
             placeholder.altair_chart(_temperature_chart(upto_year=upto_year, final=False, **chart_kwargs),
                                      width='stretch')
@@ -1265,7 +1253,6 @@ def _screen_phase2():
         return
 
     temp2 = st.session_state['temp_phase2']
-    temp1 = st.session_state['temp_phase1']
 
     after_chk = temp2.sel(year=temp2.year > CHECKPOINT)
     peak_temp = float(after_chk.max())
@@ -1279,7 +1266,7 @@ def _screen_phase2():
     _show_temperature_animation(
         f'phase2-{st.session_state["config_id"]}-{netzero_key}',
         temp_da=temp2, year_start=1900, year_end=display_end,
-        show_peak=True, phase1_da=temp1,
+        show_peak=True,
     )
 
     if peak_temp < PARIS_15:
