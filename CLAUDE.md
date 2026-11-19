@@ -4,7 +4,8 @@
 
 A Streamlit classroom app for grades 7–9 climate negotiation simulation (also usable with adults).
 Run with `streamlit run app.py`; instructor slider mode with `streamlit run app.py -- --sliders`.
-Conda env in `environment.yml` (Python 3.11, FaIR 2.2). UI text is Finnish.
+Conda env in `environment.yml` (Python 3.11, FaIR 2.2). UI in Finnish and English: the language is
+chosen on the first page and can be switched at any time (FI/EN switch at the top right).
 
 ## Publishing goal
 
@@ -33,6 +34,7 @@ The app is not yet ready for release. The plan for release is saved at
   Gives the app ensemble estimates without running FaIR. Re-run (~5 min) after any change to the
   emissions setup, screening or targets; run `precompute_configs.py` first.
 - `app.py` — Streamlit UI (main entry point)
+- `texts.py` — all user-visible text in both languages (`t('key', ...)`)
 - `make_presentation_figure.py` — standalone figure generation utility
 
 ## App structure
@@ -78,8 +80,16 @@ choices are commented by the constants in `app.py` (`OBS_WINDOW`, `OBS_2040_SD`,
 
 - Light theme pinned in `.streamlit/config.toml` (projector readability). Matplotlib charts use
   `CHART_BG`/`CHART_FG`; level colours get darker shades for text via `TEXT_SHADE`.
-- Finnish decimal commas in everything displayed: `_fi()` for text, `COMMA_TICKS` for matplotlib,
-  a `labelExpr` for Altair axes.
+- Two languages (`st.session_state['lang']`, 'fi' / 'en'). Never hard-code displayed text:
+  prose goes in `texts.py` as `{'fi': ..., 'en': ...}` and is shown with `t('key', name=value)`
+  (str.format placeholders; an import-time check fails if a language is missing). Labels of the
+  data tables in `app.py` (`EMISSION_OPTIONS` levels, `NETZERO_OFFSETS`, `TEMP_ANNOTATIONS`,
+  `IMPACTS`, `SCREEN_TITLES`, `STAGE_STYLE`) are inline `{'fi', 'en'}` dicts read with `tr()`.
+- Region IDs are the Finnish names (keys of `REGION_EMISSIONS_BASE_GTCO2`); display them with
+  `_region_name()` / `_plain_name()`. Widget keys use the ID, so switching language keeps choices.
+- Numbers follow the language (decimal comma in Finnish, point in English; `15 %` vs `15%`):
+  `_num()` for text, `_pct()` for percentages, `NUM_TICKS` for matplotlib, a `labelExpr` for
+  Altair axes. `make_presentation_figure.py` is standalone and stays Finnish.
 - The temperature chart is Altair (`_temperature_chart`), animated by redrawing it in a placeholder
   once per result. Do not reintroduce `st.components.v1.html` (deprecated).
 - Slider mode shows the 2025→2040 change in emissions (same sign as the radio labels), range

@@ -12,6 +12,8 @@ Screen flow (SCREENS):
   phase2    Phase 2: each group sets its net-zero year; FaIR run to the peak
   reveal    the drawn member's true ECS and 2100 warming against the estimates
 The impacts page can be opened from any screen.
+The language (Finnish/English) is chosen before the first screen and can be switched at any time;
+all user-visible text is in texts.py.
 
 All temperatures are annual means (year Y = mean of FaIR timebounds Y and Y+1).
 """
@@ -41,6 +43,7 @@ from fair_runner import (
     posterior_weights,
     weighted_mean_interval,
 )
+from texts import LANGUAGES, lang, t, tr
 
 TOTAL_BASE   = sum(REGION_EMISSIONS_BASE_GTCO2.values())
 PARIS_15     = 1.5
@@ -87,39 +90,56 @@ EXCEEDANCE_LEVELS = (1.5, 2.0, 3.0, 4.0)   # °C, the warming levels of the impa
 
 # Emission reduction options per region (4 discrete choices, ordered least to most ambitious).
 # Based on emission_reduction_options.md.
-# Each entry: (Finnish label, cut_fraction) where cut_fraction > 0 = reduction,
+# Each entry: (level, cut_fraction) where cut_fraction > 0 = reduction,
 # < 0 = emissions increase (Passiivinen / Varovainen for some regions).
+# The radio label is the level name (OPTION_LEVELS) plus the % change implied by cut_fraction.
+OPTION_LEVELS = [
+    {'fi': 'Passiivinen',   'en': 'Passive'},
+    {'fi': 'Varovainen',    'en': 'Cautious'},
+    {'fi': 'Vahva',         'en': 'Strong'},
+    {'fi': 'Maksimaalinen', 'en': 'Maximal'},
+]
 EMISSION_OPTIONS = {
     'Kiina 🇨🇳': [
-        ('Passiivinen (+15 %)',   -0.15),   # SSP3-7.0 / SSP5-8.5 BAU growth
-        ('Varovainen (−10 %)',    0.10),
-        ('Vahva (−40 %)',         0.40),
-        ('Maksimaalinen (−65 %)', 0.65),
+        (0, -0.15),   # SSP3-7.0 / SSP5-8.5 BAU growth
+        (1,  0.10),
+        (2,  0.40),
+        (3,  0.65),
     ],
     'USA 🇺🇸': [
-        ('Passiivinen (0 %)',      0.00),   # No additional policy beyond baseline
-        ('Varovainen (−20 %)',    0.20),
-        ('Vahva (−55 %)',         0.55),
-        ('Maksimaalinen (−80 %)', 0.80),
+        (0,  0.00),   # No additional policy beyond baseline
+        (1,  0.20),
+        (2,  0.55),
+        (3,  0.80),
     ],
     'EU 🇪🇺': [
-        ('Passiivinen (−20 %)',   0.20),   # Below current NDC, minimal action
-        ('Varovainen (−55 %)',    0.55),
-        ('Vahva (−75 %)',         0.75),
-        ('Maksimaalinen (−90 %)', 0.90),
+        (0,  0.20),   # Below current NDC, minimal action
+        (1,  0.55),
+        (2,  0.75),
+        (3,  0.90),
     ],
     'Intia 🇮🇳': [
-        ('Passiivinen (+80 %)',  -0.80),   # Strong BAU growth, SSP5-like
-        ('Varovainen (+35 %)',   -0.35),   # NDC intensity target → absolute rise
-        ('Vahva (−20 %)',         0.20),
-        ('Maksimaalinen (−50 %)', 0.50),
+        (0, -0.80),   # Strong BAU growth, SSP5-like
+        (1, -0.35),   # NDC intensity target → absolute rise
+        (2,  0.20),
+        (3,  0.50),
     ],
     'Muu maailma 🌍': [
-        ('Passiivinen (+20 %)',  -0.20),   # Developing-world BAU growth
-        ('Varovainen (−15 %)',    0.15),
-        ('Vahva (−35 %)',         0.35),
-        ('Maksimaalinen (−60 %)', 0.60),
+        (0, -0.20),   # Developing-world BAU growth
+        (1,  0.15),
+        (2,  0.35),
+        (3,  0.60),
     ],
+}
+
+# The Finnish region names are the internal IDs (keys of REGION_EMISSIONS_BASE_GTCO2 in
+# fair_runner.py and of the session state); this maps them to the displayed names.
+REGION_NAMES = {
+    'Kiina 🇨🇳':      {'fi': 'Kiina 🇨🇳',      'en': 'China 🇨🇳'},
+    'USA 🇺🇸':         {'fi': 'USA 🇺🇸',         'en': 'USA 🇺🇸'},
+    'EU 🇪🇺':          {'fi': 'EU 🇪🇺',          'en': 'EU 🇪🇺'},
+    'Intia 🇮🇳':       {'fi': 'Intia 🇮🇳',       'en': 'India 🇮🇳'},
+    'Muu maailma 🌍': {'fi': 'Muu maailma 🌍', 'en': 'Rest of the world 🌍'},
 }
 
 # Maximum post-CHECKPOINT decarbonisation rate: 3 % of each region's BASE_YEAR baseline
@@ -131,19 +151,22 @@ MAX_DECARB_RATE_PER_YEAR = 0.03
 # Net-zero timing options for Phase 2 (offsets in years from the per-region minimum).
 # Minimum = CHECKPOINT + ceil(em_remaining / MAX_DECARB_RATE_PER_YEAR).
 NETZERO_OFFSETS = [
-    ('Nopein mahdollinen',     0),
-    ('Maltillinen (+25 v)',   25),
-    ('Hidas (+75 v)',         75),
-    ('Ei sitouduta (+150 v)', 150),  # net-zero year well past 2100; emissions stay high throughout simulation
+    ({'fi': 'Nopein mahdollinen',    'en': 'Fastest possible'},       0),
+    ({'fi': 'Maltillinen (+25 v)',   'en': 'Moderate (+25 yr)'},      25),
+    ({'fi': 'Hidas (+75 v)',         'en': 'Slow (+75 yr)'},          75),
+    ({'fi': 'Ei sitouduta (+150 v)', 'en': 'No commitment (+150 yr)'}, 150),  # net-zero year well past 2100; emissions stay high throughout simulation
 ]
 
-# (temp °C, color, label shown right of y-axis)
-# Two lines separated by 
+# (temp °C, color, label shown right of y-axis); '\n' splits a label into two lines
 TEMP_ANNOTATIONS = [
-    (1.5, '#65C06C', '70–90 % koralleista häviää'),
-    (2.0, '#FFA73E', 'korallit katoavat\nItämeri ei enää jäädy'),
-    (3.0, '#E2824A', 'Jäämeri jäätön useimpina kesinä\nLapin porotalous uhattuna'),
-    (4.0, '#E24444', 'helleaallot 9,4×\netelä-Suomi käytännössä lumeton'),
+    (1.5, '#65C06C', {'fi': '70–90 % koralleista häviää',
+                      'en': '70–90% of corals lost'}),
+    (2.0, '#FFA73E', {'fi': 'korallit katoavat\nItämeri ei enää jäädy',
+                      'en': 'corals disappear\nBaltic Sea no longer freezes'}),
+    (3.0, '#E2824A', {'fi': 'Jäämeri jäätön useimpina kesinä\nLapin porotalous uhattuna',
+                      'en': 'Arctic Ocean ice-free most summers\nLapland reindeer herding threatened'}),
+    (4.0, '#E24444', {'fi': 'helleaallot 9,4×\netelä-Suomi käytännössä lumeton',
+                      'en': 'heatwaves 9.4×\nsouthern Finland practically snowless'}),
 ]
 
 REGION_COLORS = {
@@ -155,94 +178,144 @@ REGION_COLORS = {
 }
 
 # Impact data at four warming levels (vs. 1850–1900 pre-industrial baseline).
-# Each entry: (icon, label, value_string, severity_0_to_100)
+# Each entry: (icon, label key in IMPACT_LABELS, value text, severity_0_to_100)
 # Global figures from IPCC AR6 WG1 (2021) and SR1.5 (2018).
 # Finland figures from Finnish Meteorological Institute projections
 # (Finland warms ~1.5–2× the global average due to Arctic amplification).
+IMPACT_LABELS = {
+    'sea_level':  {'fi': 'Merenpinnannousu (2100)',        'en': 'Sea level rise (2100)'},
+    'corals':     {'fi': 'Koralliriutat',                  'en': 'Coral reefs'},
+    'arctic':     {'fi': 'Arktis: jäätön kesä',            'en': 'Arctic: ice-free summer'},
+    'habitat':    {'fi': 'Lajien elinympäristö puolittuu', 'en': 'Species losing half their habitat'},
+    'heatwaves':  {'fi': 'Äärimmäiset helleaallot',        'en': 'Extreme heatwaves'},
+    'fi_warming': {'fi': 'Lämpötilan nousu Suomessa',      'en': 'Warming in Finland'},
+    'helsinki':   {'fi': 'Helsinki talvella',              'en': 'Helsinki in winter'},
+    'snow':       {'fi': 'Lumiset talvet Etelä-Suomessa',  'en': 'Snowy winters in southern Finland'},
+    'ski':        {'fi': 'Hiihtosesonki etelässä',         'en': 'Ski season in the south'},
+    'reindeer':   {'fi': 'Porotalous Lapissa',             'en': 'Reindeer herding in Lapland'},
+}
 IMPACTS = {
     1.5: {
         'color': '#65C06C',
         'global': [
-            ('🌊', 'Merenpinnannousu (2100)',         '~40 cm',                             25),
-            ('🪸', 'Koralliriutat',                   '70–90 % häviää',                     35),
-            ('🧊', 'Arktis: jäätön kesä',             'kerran sadassa vuodessa',             15),
-            ('🦋', 'Lajien elinympäristö puolittuu',  '~6 % hyönteisistä',                  20),
-            ('☀️', 'Äärimmäiset helleaallot',         '4× yleisempiä kuin 1800-luvulla',    20),
+            ('🌊', 'sea_level', {'fi': '~40 cm', 'en': '~40 cm'}, 25),
+            ('🪸', 'corals',    {'fi': '70–90 % häviää', 'en': '70–90% lost'}, 35),
+            ('🧊', 'arctic',    {'fi': 'kerran sadassa vuodessa', 'en': 'once in a hundred years'}, 15),
+            ('🦋', 'habitat',   {'fi': '~6 % hyönteisistä', 'en': '~6% of insects'}, 20),
+            ('☀️', 'heatwaves', {'fi': '4× yleisempiä kuin 1800-luvulla',
+                                 'en': '4× more frequent than in the 1800s'}, 20),
         ],
         'finland': [
-            ('🌡️', 'Lämpötilan nousu Suomessa',       '+2–3 °C',                            25),
-            ('🏙️', 'Helsinki talvella',               'kuin Tukholma tänään',               25),
-            ('❄️', 'Lumiset talvet Etelä-Suomessa',  'harvinaisempia',                      25),
-            ('⛷️', 'Hiihtosesonki etelässä',          'lyhenee 2–3 viikkoa',                20),
-            ('🦌', 'Porotalous Lapissa',              'jäätymisriski kasvaa',                20),
+            ('🌡️', 'fi_warming', {'fi': '+2–3 °C', 'en': '+2–3 °C'}, 25),
+            ('🏙️', 'helsinki',   {'fi': 'kuin Tukholma tänään', 'en': 'like Stockholm today'}, 25),
+            ('❄️', 'snow',       {'fi': 'harvinaisempia', 'en': 'less common'}, 25),
+            ('⛷️', 'ski',        {'fi': 'lyhenee 2–3 viikkoa', 'en': 'shorter by 2–3 weeks'}, 20),
+            ('🦌', 'reindeer',   {'fi': 'jäätymisriski kasvaa', 'en': 'growing risk of icy pastures'}, 20),
         ],
     },
     2.0: {
         'color': '#FFA73E',
         'global': [
-            ('🌊', 'Merenpinnannousu (2100)',         '~50 cm',                              45),
-            ('🪸', 'Koralliriutat',                   '>99 % häviää — käytännössä kaikki',  75),
-            ('🧊', 'Arktis: jäätön kesä',             'kerran kymmenessä vuodessa',          40),
-            ('🦋', 'Lajien elinympäristö puolittuu',  '~18 % hyönteisistä',                 45),
-            ('☀️', 'Äärimmäiset helleaallot',         '5,6× yleisempiä',                    45),
+            ('🌊', 'sea_level', {'fi': '~50 cm', 'en': '~50 cm'}, 45),
+            ('🪸', 'corals',    {'fi': '>99 % häviää — käytännössä kaikki',
+                                 'en': '>99% lost — practically all'}, 75),
+            ('🧊', 'arctic',    {'fi': 'kerran kymmenessä vuodessa', 'en': 'once in ten years'}, 40),
+            ('🦋', 'habitat',   {'fi': '~18 % hyönteisistä', 'en': '~18% of insects'}, 45),
+            ('☀️', 'heatwaves', {'fi': '5,6× yleisempiä', 'en': '5.6× more frequent'}, 45),
         ],
         'finland': [
-            ('🌡️', 'Lämpötilan nousu Suomessa',       '+3–4 °C',                            45),
-            ('🏙️', 'Helsinki talvella',               'kuin Varsova tänään',                45),
-            ('❄️', 'Lumiset talvet Etelä-Suomessa',  'epäluotettavia',                      50),
-            ('⛷️', 'Hiihtosesonki etelässä',          'lyhenee 1–2 kuukautta',              50),
-            ('🦌', 'Porotalous Lapissa',              'merkittävä uhka',                     45),
+            ('🌡️', 'fi_warming', {'fi': '+3–4 °C', 'en': '+3–4 °C'}, 45),
+            ('🏙️', 'helsinki',   {'fi': 'kuin Varsova tänään', 'en': 'like Warsaw today'}, 45),
+            ('❄️', 'snow',       {'fi': 'epäluotettavia', 'en': 'unreliable'}, 50),
+            ('⛷️', 'ski',        {'fi': 'lyhenee 1–2 kuukautta', 'en': 'shorter by 1–2 months'}, 50),
+            ('🦌', 'reindeer',   {'fi': 'merkittävä uhka', 'en': 'a significant threat'}, 45),
         ],
     },
     3.0: {
         'color': '#E2824A',
         'global': [
-            ('🌊', 'Merenpinnannousu (2100)',         '~80 cm',                              65),
-            ('🪸', 'Koralliriutat',                   'käytännössä hävinneet',               90),
-            ('🧊', 'Arktis: jäätön kesä',             'useimpina vuosina',                   70),
-            ('🦋', 'Lajien elinympäristö puolittuu',  '~49 % hyönteisistä',                 70),
-            ('☀️', 'Äärimmäiset helleaallot',         '~8× yleisempiä',                     70),
+            ('🌊', 'sea_level', {'fi': '~80 cm', 'en': '~80 cm'}, 65),
+            ('🪸', 'corals',    {'fi': 'käytännössä hävinneet', 'en': 'practically gone'}, 90),
+            ('🧊', 'arctic',    {'fi': 'useimpina vuosina', 'en': 'in most years'}, 70),
+            ('🦋', 'habitat',   {'fi': '~49 % hyönteisistä', 'en': '~49% of insects'}, 70),
+            ('☀️', 'heatwaves', {'fi': '~8× yleisempiä', 'en': '~8× more frequent'}, 70),
         ],
         'finland': [
-            ('🌡️', 'Lämpötilan nousu Suomessa',       '+4,5–6 °C',                          65),
-            ('🏙️', 'Helsinki talvella',               'kuin Praha tänään',                  65),
-            ('❄️', 'Lumiset talvet Etelä-Suomessa',  'hyvin harvinaisia',                   75),
-            ('⛷️', 'Hiihtosesonki etelässä',          'siirtynyt pohjoiseen',               75),
-            ('🦌', 'Porotalous Lapissa',              'vakavasti uhattuna',                   75),
+            ('🌡️', 'fi_warming', {'fi': '+4,5–6 °C', 'en': '+4.5–6 °C'}, 65),
+            ('🏙️', 'helsinki',   {'fi': 'kuin Praha tänään', 'en': 'like Prague today'}, 65),
+            ('❄️', 'snow',       {'fi': 'hyvin harvinaisia', 'en': 'very rare'}, 75),
+            ('⛷️', 'ski',        {'fi': 'siirtynyt pohjoiseen', 'en': 'moved north'}, 75),
+            ('🦌', 'reindeer',   {'fi': 'vakavasti uhattuna', 'en': 'seriously threatened'}, 75),
         ],
     },
     4.0: {
         'color': '#E24444',
         'global': [
-            ('🌊', 'Merenpinnannousu (2100)',         '~100 cm+',                            85),
-            ('🪸', 'Koralliriutat',                   'hävinneet',                          100),
-            ('🧊', 'Arktis: jäätön kesä',             'joka vuosi',                          95),
-            ('🦋', 'Lajien elinympäristö puolittuu',  '>35 % lajeista',                     85),
-            ('☀️', 'Äärimmäiset helleaallot',         '9,4× yleisempiä',                    90),
+            ('🌊', 'sea_level', {'fi': '~100 cm+', 'en': '~100 cm+'}, 85),
+            ('🪸', 'corals',    {'fi': 'hävinneet', 'en': 'gone'}, 100),
+            ('🧊', 'arctic',    {'fi': 'joka vuosi', 'en': 'every year'}, 95),
+            ('🦋', 'habitat',   {'fi': '>35 % lajeista', 'en': '>35% of species'}, 85),
+            ('☀️', 'heatwaves', {'fi': '9,4× yleisempiä', 'en': '9.4× more frequent'}, 90),
         ],
         'finland': [
-            ('🌡️', 'Lämpötilan nousu Suomessa',       '+6–8 °C',                            85),
-            ('🏙️', 'Helsinki talvella',               'kuin Wien tänään',                   85),
-            ('❄️', 'Lumiset talvet Etelä-Suomessa',  'kadonnut muisto',                     95),
-            ('⛷️', 'Hiihtosesonki etelässä',          'ei enää taloudellisesti kannattavaa', 90),
-            ('🦌', 'Porotalous Lapissa',              'romahtamassa',                        90),
+            ('🌡️', 'fi_warming', {'fi': '+6–8 °C', 'en': '+6–8 °C'}, 85),
+            ('🏙️', 'helsinki',   {'fi': 'kuin Wien tänään', 'en': 'like Vienna today'}, 85),
+            ('❄️', 'snow',       {'fi': 'kadonnut muisto', 'en': 'a thing of the past'}, 95),
+            ('⛷️', 'ski',        {'fi': 'ei enää taloudellisesti kannattavaa',
+                                  'en': 'no longer economically viable'}, 90),
+            ('🦌', 'reindeer',   {'fi': 'romahtamassa', 'en': 'collapsing'}, 90),
         ],
     },
 }
 
 
-def _fi(value, decimals):
-    """Number with a Finnish decimal comma, e.g. _fi(1.234, 2) -> '1,23'."""
-    return f'{value:.{decimals}f}'.replace('.', ',')
+def _num(value, decimals):
+    """Number in the current language: decimal comma in Finnish, e.g. _num(1.234, 2) -> '1,23'."""
+    text = f'{value:.{decimals}f}'
+    if lang() == 'fi':
+        text = text.replace('.', ',')
+    return text
 
 
-# Matplotlib tick labels with a decimal comma (rounded first, so 0.30000000000000004 -> '0,3')
-COMMA_TICKS = mticker.FuncFormatter(lambda value, pos: f'{round(value, 6):g}'.replace('.', ','))
+def _level(level):
+    """A warming level without a trailing zero: 1.5 -> '1,5' / '1.5', 2.0 -> '2'."""
+    text = f'{level:g}'
+    if lang() == 'fi':
+        text = text.replace('.', ',')
+    return text
+
+
+def _pct(value):
+    """A percentage rounded to an integer, '15 %' in Finnish and '15%' in English."""
+    return t('pct', value=f'{value:.0f}')
+
+
+# Matplotlib tick labels in the current language (rounded first, so 0.30000000000000004 -> '0,3').
+# The language is read when the figure is drawn, i.e. in the same script run that creates it.
+NUM_TICKS = mticker.FuncFormatter(lambda value, pos: _level(round(value, 6)))
+
+
+def _region_name(region: str) -> str:
+    """Displayed name of a region (internal ID = Finnish name), with its flag emoji."""
+    return tr(REGION_NAMES[region])
 
 
 def _plain_name(region: str) -> str:
-    """Return the text part of a region name, dropping the trailing flag emoji."""
-    return region.rsplit(' ', 1)[0]
+    """Displayed name of a region without the trailing flag emoji."""
+    return _region_name(region).rsplit(' ', 1)[0]
+
+
+def _option_label(region: str, index: int) -> str:
+    """Radio label of a Phase 1 option: level name and the 2025->2040 change, e.g. 'Vahva (−40 %)'."""
+    level, cut = EMISSION_OPTIONS[region][index]
+    change = round(-cut * 100)
+    if change > 0:
+        signed = f'+{change}'
+    elif change < 0:
+        signed = f'−{-change}'   # typographic minus
+    else:
+        signed = '0'
+    return f'{tr(OPTION_LEVELS[level])} ({t("pct", value=signed)})'
 
 
 def _min_netzero_year(cut_fraction: float) -> int:
@@ -272,21 +345,25 @@ def _load_gmst():
 # buttons and can step back; the impacts page opens on top of any screen.
 SCREENS = ['pledges', 'prior', 'draw', 'sim1', 'obs2040', 'research', 'phase2', 'reveal']
 SCREEN_TITLES = {
-    'pledges':  'Lupaukset',
-    'prior':    'Alkuarvio',
-    'draw':     'Arvonta',
-    'sim1':     'Simulaatio 2040',
-    'obs2040':  'Havainto 2040',
-    'research': 'Tutkimus etenee',
-    'phase2':   'Nollapäästöt',
-    'reveal':   'Paljastus',
+    'pledges':  {'fi': 'Lupaukset',       'en': 'Pledges'},
+    'prior':    {'fi': 'Alkuarvio',       'en': 'Initial estimate'},
+    'draw':     {'fi': 'Arvonta',         'en': 'Draw'},
+    'sim1':     {'fi': 'Simulaatio 2040', 'en': 'Simulation 2040'},
+    'obs2040':  {'fi': 'Havainnot 2040',  'en': 'Observations 2040'},
+    'research': {'fi': 'Tutkimus etenee', 'en': 'Research advances'},
+    'phase2':   {'fi': 'Nollapäästöt',    'en': 'Net-zero emissions'},
+    'reveal':   {'fi': 'Paljastus',       'en': 'Reveal'},
 }
-# Estimate stages: (Finnish label, colour). A stage is shown from its own screen onwards.
+# Estimate stages: (label, colour). A stage is shown from its own screen onwards.
 STAGE_STYLE = {
-    'prior':    ('Alkuarvio', '#8A9099'),
-    'obs2040':  ('2025–2040 havaintojen jälkeen', '#5A84E2'),
-    'research': ('Tutkimuksen jälkeen', '#E26D91'),
+    'prior':    ({'fi': 'Alkuarvio', 'en': 'Initial estimate'}, '#8A9099'),
+    'obs2040':  ({'fi': '2025–2040 havaintojen jälkeen', 'en': 'After observations 2025–2040'}, '#5A84E2'),
+    'research': ({'fi': 'Tutkimuksen jälkeen', 'en': 'After research'}, '#E26D91'),
 }
+
+
+def _stage_label(stage):
+    return tr(STAGE_STYLE[stage][0])
 # Light chart style (the app theme is pinned to light in .streamlit/config.toml)
 CHART_BG     = 'white'
 CHART_FG     = '#262730'   # Streamlit's light-theme text colour
@@ -425,8 +502,8 @@ def _estimate_figure(temperature, stages, truth=None):
                              gridspec_kw={'height_ratios': [3, 1.3], 'hspace': 0.08})
     fig.patch.set_facecolor(CHART_BG)
     panels = [
-        (ecs, 'Ilmastoherkkyys (ECS)', 'ECS (°C)', None if truth is None else truth[0]),
-        (temperature, f'Lämpeneminen vuonna {ESTIMATE_YEAR}', 'Lämpötila-anomalia (°C)',
+        (ecs, t('est_ecs_title'), 'ECS (°C)', None if truth is None else truth[0]),
+        (temperature, t('est_temp_title', year=ESTIMATE_YEAR), t('axis_temp'),
          None if truth is None else truth[1]),
     ]
     n_stages = len(stages)
@@ -440,7 +517,7 @@ def _estimate_figure(temperature, stages, truth=None):
         bins = np.linspace(values.min(), values.max(), 36)
         bar_transform = blended_transform_factory(ax_bar.transAxes, ax_bar.transData)
         for row, (stage, weights) in enumerate(stages.items()):
-            label, color = STAGE_STYLE[stage]
+            label, color = _stage_label(stage), STAGE_STYLE[stage][1]
             newest = row == n_stages - 1
             ax_hist.hist(values.loc[weights.index].values, bins=bins, weights=weights.values,
                          density=True, histtype='stepfilled', color=color,
@@ -449,7 +526,7 @@ def _estimate_figure(temperature, stages, truth=None):
             ax_bar.plot([lo, hi], [row, row], color=color, linewidth=7, solid_capstyle='butt',
                         alpha=1.0 if newest else 0.6)
             ax_bar.plot([mean], [row], 'o', color='white', markeredgecolor=CHART_FG, markersize=6)
-            ax_bar.text(1.01, row, f'{_fi(mean, 1)} ({_fi(lo, 1)}–{_fi(hi, 1)})', transform=bar_transform,
+            ax_bar.text(1.01, row, f'{_num(mean, 1)} ({_num(lo, 1)}–{_num(hi, 1)})', transform=bar_transform,
                         color=color, fontsize=9, va='center', clip_on=False)
         if col == 1:
             ax_hist.axvline(PARIS_15, color='#65C06C', linewidth=1.2, linestyle='--')
@@ -457,14 +534,14 @@ def _estimate_figure(temperature, stages, truth=None):
         if true_value is not None:
             for ax in (ax_hist, ax_bar):
                 ax.axvline(true_value, color=CHART_FG, linewidth=2.0, linestyle=':')
-            ax_hist.text(true_value, ax_hist.get_ylim()[1] * 0.95, f' oikea arvo {_fi(true_value, 2)}',
+            ax_hist.text(true_value, ax_hist.get_ylim()[1] * 0.95, t('est_true_value', value=_num(true_value, 2)),
                          color=CHART_FG, fontsize=9, va='top')
         ax_hist.set_title(title, color=CHART_FG, fontsize=11)
         ax_hist.set_yticks([])
         ax_bar.set_yticks([])
         ax_bar.set_ylim(n_stages - 0.4, -0.6)    # oldest stage on top
         ax_bar.set_xlabel(xlabel, color=CHART_FG)
-        ax_bar.xaxis.set_major_formatter(COMMA_TICKS)
+        ax_bar.xaxis.set_major_formatter(NUM_TICKS)
     # Legend above the panels, so it never hides the histograms or the true-value label
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='upper center', ncol=len(labels), frameon=False,
@@ -478,23 +555,19 @@ def _show_estimates(cuts, netzero_years, upto_screen, truth=None):
     temperature = emulate_temperature(cuts, netzero_years, ESTIMATE_YEAR)
     stages = _stage_weights(upto_screen)
     st.pyplot(_estimate_figure(temperature, stages, truth))
-    st.caption(
-        'Pylväät: kuinka todennäköinen kukin arvo on. Alla: paras arvio (piste) ja 95 %:n väli – '
-        'oikea arvo osuu tälle välille 19 kertaa 20:stä.'
-    )
+    st.caption(t('est_caption'))
 
     newest = list(stages)[-1]
     probabilities = _exceedance(temperature, stages[newest])
     prior_probabilities = _exceedance(temperature, stages['prior'])
-    st.markdown(f'**Todennäköisyys, että lämpeneminen vuonna {ESTIMATE_YEAR} ylittää tason** '
-                f'({STAGE_STYLE[newest][0].lower()}):')
+    st.markdown(t('exceed_heading', year=ESTIMATE_YEAR, stage=_stage_label(newest).lower()))
     cols = st.columns(len(EXCEEDANCE_LEVELS))
     for col, level in zip(cols, EXCEEDANCE_LEVELS):
         delta = None
         change = (probabilities[level] - prior_probabilities[level]) * 100
         if newest != 'prior' and abs(change) >= 0.5:   # no "-0" arrows for rounding noise
-            delta = f'{change:+.0f} %-yks. alkuarviosta'
-        col.metric(f'yli {_fi(level, 1)} °C'.replace(',0 ', ' '), f'{probabilities[level] * 100:.0f} %',
+            delta = t('exceed_delta', change=f'{change:+.0f}')
+        col.metric(t('exceed_label', level=_level(level)), _pct(probabilities[level] * 100),
                    delta=delta, delta_color='inverse')
     return temperature, stages
 
@@ -520,20 +593,17 @@ def _lottery_html(n_cells, highlight):
 
 
 def _impacts_page():
-    st.title('🌡️ Mitä lämpeneminen tarkoittaa?')
-    st.markdown(
-        'Valitse lämpenemistaso nähdäksesi vaikutukset maailmalla ja Suomessa.  \n'
-        '*(Verrattuna esiteolliseen aikaan 1850–1900)*'
-    )
-    if st.button('⬅ Takaisin peliin'):
+    st.title(t('imp_title'))
+    st.markdown(t('imp_intro'))
+    if st.button(t('imp_back')):
         st.session_state['show_impacts'] = False
         st.rerun()
     st.markdown('---')
 
     selected = st.radio(
-        'Lämpenemistaso',
+        t('imp_radio'),
         options=[1.5, 2.0, 3.0, 4.0],
-        format_func=lambda x: f'+{_fi(x, 1)} °C',
+        format_func=lambda x: f'+{_num(x, 1)} °C',
         horizontal=True,
         key='impacts_temp',
         label_visibility='collapsed',
@@ -546,7 +616,7 @@ def _impacts_page():
     st.markdown(
         f'<div style="text-align:center;padding:16px 0 24px 0">'
         f'<span style="font-size:3.5em;font-weight:900;color:{TEXT_SHADE.get(color, color)}">'
-        f'+{_fi(selected, 1)} °C</span></div>',
+        f'+{_num(selected, 1)} °C</span></div>',
         unsafe_allow_html=True,
     )
 
@@ -560,21 +630,21 @@ def _impacts_page():
     col_global, col_finland = st.columns(2)
 
     with col_global:
-        st.subheader('🌍 Maailmanlaajuisesti')
-        for icon, label, value, sev in data['global']:
-            st.markdown(f'**{icon} {label}**')
+        st.subheader(t('imp_global'))
+        for icon, label_key, value, sev in data['global']:
+            st.markdown(f'**{icon} {tr(IMPACT_LABELS[label_key])}**')
             st.markdown(
-                f'<span style="color:{TEXT_SHADE.get(color, color)};font-size:1.05em">{value}</span>',
+                f'<span style="color:{TEXT_SHADE.get(color, color)};font-size:1.05em">{tr(value)}</span>',
                 unsafe_allow_html=True,
             )
             st.markdown(_bar(sev), unsafe_allow_html=True)
 
     with col_finland:
-        st.subheader('🇫🇮 Suomessa')
-        for icon, label, value, sev in data['finland']:
-            st.markdown(f'**{icon} {label}**')
+        st.subheader(t('imp_finland'))
+        for icon, label_key, value, sev in data['finland']:
+            st.markdown(f'**{icon} {tr(IMPACT_LABELS[label_key])}**')
             st.markdown(
-                f'<span style="color:{TEXT_SHADE.get(color, color)};font-size:1.05em">{value}</span>',
+                f'<span style="color:{TEXT_SHADE.get(color, color)};font-size:1.05em">{tr(value)}</span>',
                 unsafe_allow_html=True,
             )
             st.markdown(_bar(sev), unsafe_allow_html=True)
@@ -588,20 +658,17 @@ def _impacts_page():
     stages = _stage_weights(screen)
     newest = list(stages)[-1]
     probability = _exceedance(temperature, stages[newest])[selected]
-    decisions = 'lupauksillanne ja nollapäästövuosillanne' if netzero_years else 'lupauksillanne'
-    message = (f'📊 **Teidän {decisions}** lämpeneminen ylittää **+{_fi(selected, 1)} °C** vuonna '
-               f'{ESTIMATE_YEAR} todennäköisyydellä **{probability * 100:.0f} %** '
-               f'({STAGE_STYLE[newest][0].lower()}).')
+    decisions = t('imp_decisions_both') if netzero_years else t('imp_decisions_pledges')
+    message = t('imp_message', decisions=decisions, level=_num(selected, 1), year=ESTIMATE_YEAR,
+                prob=_pct(probability * 100), stage=_stage_label(newest).lower())
     if st.session_state['centred_decade'] is not None:
         decade_mean = st.session_state['centred_decade'][0]
-        message += (f'  \nSimulaationne vuosikymmenen {CENTRED_WINDOW[0]}–{CENTRED_WINDOW[1]} '
-                    f'keskilämpötila: **+{_fi(decade_mean, 2)} °C**.')
+        message += t('imp_decade', first=CENTRED_WINDOW[0], last=CENTRED_WINDOW[1],
+                     value=_num(decade_mean, 2))
     st.info(message)
 
     st.markdown(
-        '<p style="color:#4A5568;font-size:0.8em;margin-top:24px">'
-        'Lähteet: IPCC AR6 WG1 (2021), SR1.5 (2018) · '
-        'Suomen luvut: Ilmatieteen laitos</p>',
+        f'<p style="color:#4A5568;font-size:0.8em;margin-top:24px">{t("imp_sources")}</p>',
         unsafe_allow_html=True,
     )
 
@@ -613,7 +680,7 @@ def _nav_bar():
     furthest = st.session_state['furthest']
     steps = []
     for i, name in enumerate(SCREENS):
-        title = f'{i + 1} {SCREEN_TITLES[name]}'
+        title = f'{i + 1} {tr(SCREEN_TITLES[name])}'
         # Colours via opacity/inherit so the indicator reads on both light and dark themes
         if i == position:
             steps.append(f'<b style="color:#E2824A">{title}</b>')
@@ -626,15 +693,15 @@ def _nav_bar():
 
     col_back, col_forward, col_impacts = st.columns([1, 1, 1])
     with col_back:
-        if position > 0 and st.button('⬅ Edellinen'):
+        if position > 0 and st.button(t('nav_back')):
             st.session_state['screen'] = SCREENS[position - 1]
             st.rerun()
     with col_forward:
-        if position < furthest and st.button('Seuraava ➡'):
+        if position < furthest and st.button(t('nav_forward')):
             st.session_state['screen'] = SCREENS[position + 1]
             st.rerun()
     with col_impacts:
-        if st.button('🌡️ Vaikutukset'):
+        if st.button(t('nav_impacts')):
             st.session_state['show_impacts'] = True
             st.rerun()
     st.markdown('---')
@@ -672,10 +739,12 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
         y_max = max(y_max, decade[2] + 0.3)
     x_scale = alt.Scale(domain=[year_start, x_end], nice=False, zero=False)
     y_scale = alt.Scale(domain=[y_min, y_max], nice=False, zero=False)
-    x_enc = alt.X('x:Q', scale=x_scale, axis=alt.Axis(title='Vuosi', format='d'))
+    x_enc = alt.X('x:Q', scale=x_scale, axis=alt.Axis(title=t('axis_year'), format='d'))
     # Vega has no Finnish locale here, so the decimal comma is put in with a label expression
-    y_enc = alt.Y('T:Q', scale=y_scale, axis=alt.Axis(
-        title='Lämpötila-anomalia (°C)', labelExpr="replace(format(datum.value, '.1f'), '.', ',')"))
+    label_expr = "format(datum.value, '.1f')"
+    if lang() == 'fi':
+        label_expr = f"replace({label_expr}, '.', ',')"
+    y_enc = alt.Y('T:Q', scale=y_scale, axis=alt.Axis(title=t('axis_temp'), labelExpr=label_expr))
 
     # --- lines: observations, (Phase 1), model ---
     shown = yr_fut <= upto_year
@@ -685,21 +754,22 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
         # final frame, after the rest of the line (plot only, the results are not modified).
         first = pd.DataFrame({'x': [float(obs['year'].iloc[-1])], 'T': [float(obs['gmst'].iloc[-1])]})
         model = pd.concat([first, model], ignore_index=True)
-    model['sarja'] = 'Ilmastomalli'
-    observed = pd.DataFrame({'x': obs['year'].values, 'T': obs['gmst'].values, 'sarja': 'Havaittu'})
+    # Series names are the legend entries, so they are in the current language
+    model['sarja'] = t('series_model')
+    observed = pd.DataFrame({'x': obs['year'].values, 'T': obs['gmst'].values, 'sarja': t('series_obs')})
     parts = [observed, model]
-    series, colors, dashes = ['Havaittu', 'Ilmastomalli'], [OBS_COLOR, MODEL_COLOR], [[1, 0], [1, 0]]
+    series, colors, dashes = [t('series_obs'), t('series_model')], [OBS_COLOR, MODEL_COLOR], [[1, 0], [1, 0]]
     if phase1_da is not None:
         years1 = phase1_da.year.values
         keep1 = (years1 >= ANIM_START) & (years1 <= CHECKPOINT)
         parts.append(pd.DataFrame({'x': years1[keep1] + 0.5, 'T': phase1_da.values[keep1],
-                                   'sarja': 'Vaihe 1'}))
-        series.append('Vaihe 1')
+                                   'sarja': t('series_phase1')}))
+        series.append(t('series_phase1'))
         colors.append('#9AA0A6')
         dashes.append([6, 4])
     lines = pd.concat(parts, ignore_index=True)
     lines['vuosi'] = np.floor(lines['x']).astype(int)    # calendar year for the tooltip
-    lines['lämpötila'] = [_fi(value, 2) + ' °C' for value in lines['T']]
+    lines['lämpötila'] = [_num(value, 2) + ' °C' for value in lines['T']]
     layers = [
         alt.Chart(lines).mark_line(strokeWidth=2.2, clip=True).encode(
             x=x_enc, y=y_enc, detail='sarja:N', order='x:Q',
@@ -707,20 +777,20 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
                             legend=alt.Legend(title=None, orient='bottom-right')),
             strokeDash=alt.StrokeDash('sarja:N', scale=alt.Scale(domain=series, range=dashes),
                                       legend=None),
-            tooltip=[alt.Tooltip('sarja:N', title='Sarja'),
-                     alt.Tooltip('vuosi:Q', title='Vuosi', format='d'),
-                     alt.Tooltip('lämpötila:N', title='Lämpötila')],
+            tooltip=[alt.Tooltip('sarja:N', title=t('tt_series')),
+                     alt.Tooltip('vuosi:Q', title=t('axis_year'), format='d'),
+                     alt.Tooltip('lämpötila:N', title=t('tt_temp'))],
         )
     ]
 
     # --- warming levels: Paris lines labelled on the left, impacts on the right ---
-    levels = pd.DataFrame([{'T': t, 'väri': color, 'tekstiväri': TEXT_SHADE.get(color, color),
-                            'vaikutus': label}
-                           for t, color, label in TEMP_ANNOTATIONS if t <= y_max])
+    levels = pd.DataFrame([{'T': level, 'väri': color, 'tekstiväri': TEXT_SHADE.get(color, color),
+                            'vaikutus': tr(label)}
+                           for level, color, label in TEMP_ANNOTATIONS if level <= y_max])
     paris = pd.DataFrame([{'T': PARIS_15, 'tekstiväri': TEXT_SHADE['#65C06C'],
-                           'nimi': '1,5 °C (Pariisin tavoite)'},
+                           'nimi': t('paris_15')},
                           {'T': PARIS_20, 'tekstiväri': TEXT_SHADE['#FFA73E'],
-                           'nimi': '2,0 °C (Pariisin raja)'}])
+                           'nimi': t('paris_20')}])
     paris = paris[paris['T'] <= y_max]    # text marks are not clipped: drop labels above the plot
     layers += [
         alt.Chart(levels).mark_rule(strokeDash=[5, 4], strokeWidth=1.3).encode(
@@ -749,7 +819,7 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
         peak_temp = float(after.max())
         peak_year = int(after.year.values[after.values.argmax()])
         peak = pd.DataFrame({'x': [peak_year + 0.5], 'T': [peak_temp],
-                             'nimi': [f'Huippu: {_fi(peak_temp, 2)} °C ({peak_year})']})
+                             'nimi': [t('peak_label', value=_num(peak_temp, 2), year=peak_year)]})
         layers += [
             alt.Chart(peak).mark_rule(strokeDash=[2, 3], color=OBS_COLOR).encode(x=x_enc),
             alt.Chart(peak).mark_point(size=90, filled=True, color=MODEL_COLOR).encode(x=x_enc, y=y_enc),
@@ -799,7 +869,7 @@ def _show_temperature_animation(key, **chart_kwargs):
         played.add(key)
     placeholder.altair_chart(_temperature_chart(upto_year=year_end, final=True, **chart_kwargs),
                              width='stretch')
-    if st.button('▶ Toista animaatio', key=f'replay_{key}'):
+    if st.button(t('replay'), key=f'replay_{key}'):
         played.discard(key)
         st.rerun()
 
@@ -819,15 +889,15 @@ def _emissions_bar_chart(cuts):
 
     x     = np.arange(len(regions))
     width = 0.27
-    ax.bar(x - width, base,   width, color=colors, alpha=0.30, label=f'Päästöt {BASE_YEAR}')
-    ax.bar(x,         target, width, color=colors, alpha=0.90, label=f'Päästöt {CHECKPOINT} (lupaus)')
+    ax.bar(x - width, base,   width, color=colors, alpha=0.30, label=t('bar_base', year=BASE_YEAR))
+    ax.bar(x,         target, width, color=colors, alpha=0.90, label=t('bar_pledge', year=CHECKPOINT))
     ax.bar(x + width, later,  width, color=colors, alpha=0.60, hatch='//',
-           label=f'Päästöt {ESTIMATE_YEAR} (sama vuosimuutos jatkuu)')
+           label=t('bar_later', year=ESTIMATE_YEAR))
 
     ax.set_xticks(x)
     ax.set_xticklabels([_plain_name(r) for r in regions], color=CHART_FG, fontsize=9)
-    ax.set_ylabel('GtCO₂/vuosi', color=CHART_FG)
-    ax.yaxis.set_major_formatter(COMMA_TICKS)
+    ax.set_ylabel(t('unit_per_year'), color=CHART_FG)
+    ax.yaxis.set_major_formatter(NUM_TICKS)
     ax.tick_params(colors=CHART_FG)
     ax.legend(facecolor=CHART_BG, labelcolor=CHART_FG, fontsize=9)
     for spine in ax.spines.values():
@@ -871,16 +941,16 @@ def _emissions_pathway_chart(cuts, netzero_years):
         stack_bottom += region_em[r]
 
     ax.axvline(CHECKPOINT, color=CHART_FG, linewidth=1, linestyle=':')
-    ax.set_ylabel('GtCO₂/vuosi', color=CHART_FG)
-    ax.yaxis.set_major_formatter(COMMA_TICKS)
-    ax.set_xlabel('Vuosi', color=CHART_FG)
+    ax.set_ylabel(t('unit_per_year'), color=CHART_FG)
+    ax.yaxis.set_major_formatter(NUM_TICKS)
+    ax.set_xlabel(t('axis_year'), color=CHART_FG)
     ax.set_xlim(BASE_YEAR, plot_end)
     ax.tick_params(colors=CHART_FG)
     for spine in ax.spines.values():
         spine.set_edgecolor(CHART_SPINE)
     ax.legend(facecolor=CHART_BG, labelcolor=CHART_FG, fontsize=8,
               loc='upper right', ncol=2)
-    ax.set_title('Päästöpolku alueittain', color=CHART_FG, fontsize=10)
+    ax.set_title(t('pathway_title'), color=CHART_FG, fontsize=10)
     fig.tight_layout()
     return fig
 
@@ -900,16 +970,16 @@ def _cut_input(region: str, option_indices: dict, disabled: bool = False) -> flo
         stored_idx = option_indices.get(region, 0)
         change_pct = int(round(-EMISSION_OPTIONS[region][stored_idx][1] * 100))
         change_pct = st.slider(
-            region, min_value=-100, max_value=80,
-            value=change_pct, step=5, format='%+d %%',
+            _region_name(region), min_value=-100, max_value=80,
+            value=change_pct, step=5, format='%+d %%' if lang() == 'fi' else '%+d%%',
             key=f'slider_p1_{region}', disabled=disabled,
         )
         return -change_pct / 100.0
     options = EMISSION_OPTIONS[region]
     idx = st.radio(
-        region,
+        _region_name(region),
         options=range(len(options)),
-        format_func=lambda i, opts=options: opts[i][0],
+        format_func=lambda i: _option_label(region, i),
         index=option_indices.get(region, 0),
         key=f'radio_p1_{region}', disabled=disabled,
     )
@@ -930,15 +1000,15 @@ def _nz_input(region: str, min_nz: int, netzero_indices: dict) -> int:
         default_yr = nz_opts[current][1]
         max_nz = max(yr for _, yr in nz_opts)
         return st.slider(
-            region, min_value=min_nz, max_value=max_nz,
+            _region_name(region), min_value=min_nz, max_value=max_nz,
             value=max(default_yr, min_nz), step=5,
             key=f'slider_nz_{region}',
         )
     nz_opts = [(lbl, min_nz + off) for lbl, off in NETZERO_OFFSETS]
     idx = st.radio(
-        region,
+        _region_name(region),
         options=range(len(nz_opts)),
-        format_func=lambda i, o=nz_opts: f'{o[i][0]} ({o[i][1]})',
+        format_func=lambda i, o=nz_opts: f'{tr(o[i][0])} ({o[i][1]})',
         index=netzero_indices.get(region, 1),
         key=f'radio_nz_{region}',
     )
@@ -947,109 +1017,80 @@ def _nz_input(region: str, min_nz: int, netzero_indices: dict) -> int:
 
 
 def _screen_pledges():
-    st.title('🌍 Ilmastoneuvottelut — Mitä lupaatte?')
-    st.markdown(
-        'Jokainen ryhmä edustaa yhtä maailman suurta päästöaluetta. '
-        f'Sopikaa, kuinka paljon leikkaatte **fossiilisia CO₂-päästöjä** vuoteen **{CHECKPOINT}** mennessä.'
-    )
-    st.caption(
-        'Fossiiliset CO₂-päästöt tarkoittavat fossiilisten polttoaineiden ja teollisuuden päästöjä. '
-        'Maankäytön päästöt (esim. metsäkato) eivät muutu pelissä: ne noudattavat SSP2-4.5-skenaariota.'
-    )
+    st.title(t('pl_title'))
+    st.markdown(t('pl_intro', year=CHECKPOINT))
+    st.caption(t('pl_caption'))
 
     _nav_bar()
 
     # Once a member is drawn the 2040 observation depends on these pledges, so they are locked.
     locked = st.session_state['config_id'] is not None
     if locked:
-        st.warning('🔒 Lupaukset on lukittu, koska ilmasto on jo arvottu. '
-                   'Jos haluatte muuttaa niitä, aloittakaa alusta.')
+        st.warning(t('pl_locked'))
 
     cuts          = st.session_state['cuts']
     option_indices = st.session_state['option_indices']
 
-    st.subheader('Aseta jokaisen alueen lupaus')
+    st.subheader(t('pl_subheader'))
     if USE_SLIDERS:
-        st.caption(f'Päästöjen muutos vuodesta {BASE_YEAR} vuoteen {CHECKPOINT}: '
-                   '−100 % = nollapäästöt, 0 % = ennallaan, + = päästöt kasvavat.')
+        st.caption(t('pl_slider_caption', base_year=BASE_YEAR, year=CHECKPOINT))
     cols = st.columns(len(REGION_EMISSIONS_BASE_GTCO2))
     for col, (region, base_em) in zip(cols, REGION_EMISSIONS_BASE_GTCO2.items()):
         with col:
             cut    = _cut_input(region, option_indices, disabled=locked)
             cuts[region] = cut
             em_chk = base_em * (1.0 - cut)
-            st.caption(
-                f'{BASE_YEAR}: **{_fi(base_em, 1)}** GtCO₂/v  \n'
-                f'{CHECKPOINT}: **{_fi(em_chk, 1)}** GtCO₂/v'
-            )
+            st.caption(t('pl_region_caption', base_year=BASE_YEAR, base=_num(base_em, 1),
+                         year=CHECKPOINT, pledged=_num(em_chk, 1)))
     st.session_state['cuts']          = cuts
     st.session_state['option_indices'] = option_indices
 
     total_chk     = sum(REGION_EMISSIONS_BASE_GTCO2[r] * (1 - cuts[r]) for r in cuts)
     total_cut_pct = (1 - total_chk / TOTAL_BASE) * 100
-    change_str = (f'{total_cut_pct:.0f} % leikkaus' if total_cut_pct >= 0
-                  else f'{-total_cut_pct:.0f} % kasvu')
-    st.info(
-        f'**Yhteensä {CHECKPOINT}:** {_fi(total_chk, 1)} GtCO₂/vuosi  '
-        f'({change_str} vuoden {BASE_YEAR} tasosta)'
-    )
+    change_str = (t('pl_cut', pct=f'{total_cut_pct:.0f}') if total_cut_pct >= 0
+                  else t('pl_growth', pct=f'{-total_cut_pct:.0f}'))
+    st.info(t('pl_total', year=CHECKPOINT, total=_num(total_chk, 1), change=change_str,
+              base_year=BASE_YEAR))
     st.pyplot(_emissions_bar_chart(cuts))
 
     # Prior estimate (whole screened ensemble, equal weights): mean and 95 % interval.
     est_40  = emulate_temperature(cuts, None, CHECKPOINT)
     est_end = emulate_temperature(cuts, None, ESTIMATE_YEAR)
-    st.info(
-        '**Alkuarvio lämpötilasta** (keskiarvo ja 95 %:n väli – emme vielä tiedä, '
-        'kuinka herkkä ilmastomme on):  \n'
-        f'{CHECKPOINT}: **{_fi(est_40.mean(), 1)} °C** '
-        f'({_fi(est_40.quantile(0.025), 1)}–{_fi(est_40.quantile(0.975), 1)} °C)  \n'
-        f'{ESTIMATE_YEAR}: **{_fi(est_end.mean(), 1)} °C** '
-        f'({_fi(est_end.quantile(0.025), 1)}–{_fi(est_end.quantile(0.975), 1)} °C)'
-    )
-    st.caption(
-        f'Oletus {CHECKPOINT} jälkeen: kunkin alueen päästöt muuttuvat vuosittain yhtä paljon kuin '
-        f'vuosina {BASE_YEAR}–{CHECKPOINT} (laskevat korkeintaan nollaan; kasvavat pysyvät ennallaan).'
-    )
+    st.info(t(
+        'pl_prior',
+        year1=CHECKPOINT, mean1=_num(est_40.mean(), 1),
+        lo1=_num(est_40.quantile(0.025), 1), hi1=_num(est_40.quantile(0.975), 1),
+        year2=ESTIMATE_YEAR, mean2=_num(est_end.mean(), 1),
+        lo2=_num(est_end.quantile(0.025), 1), hi2=_num(est_end.quantile(0.975), 1),
+    ))
+    st.caption(t('pl_assumption', year=CHECKPOINT, base_year=BASE_YEAR))
 
-    if st.button('Katsotaan alkuarvio tarkemmin →', type='primary'):
+    if st.button(t('pl_next'), type='primary'):
         _goto('prior')
 
 
 def _screen_prior():
-    st.title('🤔 Mitä tiedämme ennen kuin mitään on tapahtunut?')
+    st.title(t('pr_title'))
     _nav_bar()
-    st.markdown(
-        'Tutkijat eivät tiedä tarkalleen, **kuinka herkästi ilmasto reagoi** hiilidioksidiin. '
-        f'Siksi ilmastomallissa on {len(_load_screened())} versiota – '
-        '**mahdollista ilmastoa** – jotka kaikki sopivat yhteen tähänastisten havaintojen kanssa.'
-    )
-    st.markdown(
-        '**Ilmastoherkkyys ** kertoo, kuinka paljon ilmasto lopulta lämpenisi, jos ilman '
-        'CO₂-pitoisuus kaksinkertaistuisi pysyvästi. Mitä suurempi ilmastoherkkyys, sitä enemmän samat päästöt '
-        'lämmittävät.'
-    )
+    st.markdown(t('pr_intro', n=len(_load_screened())))
+    st.markdown(t('pr_ecs'))
     _show_estimates(st.session_state['cuts'], None, 'prior')
-    st.info('👆 Tämä on **alkuarvio**. Harmaa jakauma pysyy näkyvissä koko pelin ajan, '
-            'jotta näette, miten arvio tarkentuu.')
-    if st.button('Arvotaan meidän ilmastomme →', type='primary'):
+    st.info(t('pr_info'))
+    if st.button(t('pr_next'), type='primary'):
         _goto('draw')
 
 
 def _screen_draw():
-    st.title('🎲 Arvonta: mikä ilmastoista on meidän?')
+    st.title(t('dr_title'))
     _nav_bar()
     screened = _load_screened()
     n_members = len(screened)
-    st.markdown(
-        f'Arvotaan yksi {n_members} mahdollisesta ilmastosta. Se on pelin "todellinen" ilmasto: '
-        '**sen ilmastoherkkyys on salaisuus**, ja teidän on pääteltävä sitä havainnoista, '
-        'kuten tutkijat tekevät oikeassakin maailmassa.'
-    )
+    st.markdown(t('dr_intro', n=n_members))
 
     placeholder = st.empty()
     if st.session_state['config_id'] is None:
         placeholder.markdown(_lottery_html(n_members, None), unsafe_allow_html=True)
-        if st.button('🎲 Arvo ilmasto', type='primary'):
+        if st.button(t('dr_button'), type='primary'):
             # Flicker through random cells, slowing down. The cell is only a visual: the member is
             # drawn uniformly and independently, so the grid position carries no information.
             for delay in np.linspace(0.04, 0.28, 18):
@@ -1065,17 +1106,16 @@ def _screen_draw():
 
     placeholder.markdown(_lottery_html(n_members, st.session_state['grid_position']),
                          unsafe_allow_html=True)
-    st.success(f'✨ Ilmasto nro {st.session_state["grid_position"] + 1} arvottu! '
-               'Sen ilmastoherkkyys paljastetaan vasta pelin lopussa.')
+    st.success(t('dr_success', number=st.session_state['grid_position'] + 1))
     if st.session_state['temp_phase1'] is None:
-        if st.button(f'🔬 Simuloi {ANIM_START}–{CHECKPOINT} →', type='primary'):
-            with st.spinner('Lasketaan FaIR-simulaatio...'):
+        if st.button(t('dr_simulate', start=ANIM_START, end=CHECKPOINT), type='primary'):
+            with st.spinner(t('spinner_fair')):
                 _simulate_phase1(st.session_state['cuts'])
             _goto('sim1')
 
 
 def _screen_sim1():
-    st.title(f'📊 Mitä tapahtui vuoteen {CHECKPOINT} mennessä?')
+    st.title(t('s1_title', year=CHECKPOINT))
     _nav_bar()
     temp = st.session_state['temp_phase1']
     t_single = float(temp.sel(year=CHECKPOINT))
@@ -1091,126 +1131,83 @@ def _screen_sim1():
         highlight_year=CHECKPOINT, decade=st.session_state['centred_decade'],
     )
     col_obs, col_single, col_decade = st.columns(3)
-    col_obs.metric(f'Havaittu {ANIM_START - 1}', f'+{_fi(obs_last, 2)} °C')
-    col_single.metric(f'Vuosi {CHECKPOINT}', f'+{_fi(t_single, 2)} °C')
-    col_decade.metric(f'Keskiarvo {CENTRED_WINDOW[0]}–{CENTRED_WINDOW[1]}', f'+{_fi(decade_mean, 2)} °C',
-                      help=f'95 %:n väli {_fi(decade_lo, 2)}–{_fi(decade_hi, 2)} °C, koska vuodet '
-                           f'{OBS_WINDOW[1] + 1}–{CENTRED_WINDOW[1]} on arvioitu')
+    col_obs.metric(t('s1_obs', year=ANIM_START - 1), f'+{_num(obs_last, 2)} °C')
+    col_single.metric(t('s1_year', year=CHECKPOINT), f'+{_num(t_single, 2)} °C')
+    col_decade.metric(t('s1_decade', first=CENTRED_WINDOW[0], last=CENTRED_WINDOW[1]),
+                      f'+{_num(decade_mean, 2)} °C',
+                      help=t('s1_decade_help', lo=_num(decade_lo, 2), hi=_num(decade_hi, 2),
+                             p0=OBS_WINDOW[1] + 1, p1=CENTRED_WINDOW[1]))
 
     # Paris thresholds refer to long-term warming, so the verdict uses the decade centred on 2040.
+    window = dict(first=CENTRED_WINDOW[0], last=CENTRED_WINDOW[1])
     if decade_mean < PARIS_15:
-        st.success(f'✅ Vuosikymmenen {CENTRED_WINDOW[0]}–{CENTRED_WINDOW[1]} keskilämpötila '
-                   'on alle 1,5 °C:n tavoitteen!')
+        st.success(t('s1_below15', **window))
     elif decade_mean < PARIS_20:
-        st.warning(f'⚠️ Vuosikymmenen {CENTRED_WINDOW[0]}–{CENTRED_WINDOW[1]} keskilämpötila on '
-                   'yli 1,5 °C mutta alle 2 °C:n rajan.')
+        st.warning(t('s1_between', **window))
     else:
-        st.error(f'❌ Vuosikymmenen {CENTRED_WINDOW[0]}–{CENTRED_WINDOW[1]} keskilämpötila ylittää '
-                 '2 °C:n Pariisin rajan.')
+        st.error(t('s1_above20', **window))
 
     single_above = t_single >= PARIS_15
     decade_above = decade_mean >= PARIS_15
-    st.markdown(
-        f'**Miksi keskiarvo eikä vain vuosi {CHECKPOINT}?** Yksittäinen vuosi heittelee luonnollisen '
-        'vaihtelun (esim. El Niño) takia. Pariisin sopimuksen rajat tarkoittavat pitkän ajan '
-        f'lämpenemistä, joten sitä arvioidaan tässä pelissä vuosikymmenen keskiarvona. Vuoden {CHECKPOINT} lopussa '
-        f'vuodet {OBS_WINDOW[1] + 1}–{CENTRED_WINDOW[1]} ovat vielä tulevaisuutta, joten ne on '
-        'arvioitu (katkoviiva ja varjostus). Arvio käyttää kaikkea vuoden '
-        f'{CHECKPOINT} lopussa saatavilla olevaa tietoa: mittauksia ja uusinta tutkimusta, '
-        'joihin tutustutte seuraavaksi.'
-    )
+    st.markdown(t('s1_why', year=CHECKPOINT, p0=OBS_WINDOW[1] + 1, p1=CENTRED_WINDOW[1]))
     if single_above != decade_above:
-        st.info(f'💡 Huomatkaa: vuosi {CHECKPOINT} ({_fi(t_single, 2)} °C) ja vuosikymmenen keskiarvo '
-                f'({_fi(decade_mean, 2)} °C) ovat eri puolilla 1,5 °C:n rajaa. Yksi vuosi ei vielä kerro, '
-                'onko raja ylitetty.')
-    st.caption('Oikeassa maailmassa vuosi 2024 oli ensimmäinen yli 1,5 °C:n vuosi (1,51 °C), mutta '
-               'vuosien 2016–2025 keskiarvo oli 1,26 °C (IGCC-2025a).')
+        st.info(t('s1_split', year=CHECKPOINT, single=_num(t_single, 2), decade=_num(decade_mean, 2)))
+    st.caption(t('s1_real'))
 
-    if st.button('Mitä opimme havainnoista? →', type='primary'):
+    if st.button(t('s1_next'), type='primary'):
         _goto('obs2040')
 
 
 def _screen_obs2040():
-    st.title(f'🔭 Havainto {CHECKPOINT}: mitä lämpeneminen kertoo ilmastostamme?')
+    st.title(t('ob_title', year=CHECKPOINT))
     _nav_bar()
     observed = st.session_state['obs_window_mean']
-    st.markdown(
-        f'Vuoden {CHECKPOINT} lopussa tiedämme, kuinka paljon meidän ilmastomme lämpeni. '
-        f'Mitattu keskilämpötila vuosina {OBS_WINDOW[0]}–{OBS_WINDOW[1]}: '
-        f'**{_fi(observed, 2)} °C** (mittausepävarmuus ±{_fi(1.96 * OBS_2040_SD, 1)} °C).  \n'
-        'Ilmastot, joiden lämpeneminen sopii tähän mittaukseen, muuttuvat todennäköisemmiksi.'
-    )
+    st.markdown(t('ob_intro', year=CHECKPOINT, first=OBS_WINDOW[0], last=OBS_WINDOW[1],
+                  observed=_num(observed, 2), err=_num(1.96 * OBS_2040_SD, 1)))
     temperature, stages = _show_estimates(st.session_state['cuts'], None, 'obs2040')
     ecs = _load_screened()['ECS']
     ecs_old, ecs_new = _interval_width_change(ecs, stages, 'prior', 'obs2040')
     t_old, t_new = _interval_width_change(temperature, stages, 'prior', 'obs2040')
     ecs_narrowing = 1 - ecs_new / ecs_old
-    message = (
-        f'Ilmastoherkkyyden 95 %:n väli kapeni **{_fi(ecs_old, 1)} → {_fi(ecs_new, 1)} °C** '
-        f'({ecs_narrowing * 100:.0f} %), vuoden {ESTIMATE_YEAR} lämpenemisen '
-        f'**{_fi(t_old, 1)} → {_fi(t_new, 1)} °C** ({(1 - t_new / t_old) * 100:.0f} %). '
-    )
+    message = t('ob_narrow', ecs_old=_num(ecs_old, 1), ecs_new=_num(ecs_new, 1),
+                ecs_pct=f'{ecs_narrowing * 100:.0f}', year=ESTIMATE_YEAR,
+                t_old=_num(t_old, 1), t_new=_num(t_new, 1), t_pct=f'{(1 - t_new / t_old) * 100:.0f}')
     # Typically (median over simulated games) the ECS interval narrows by only ~20 %; it narrows
     # much more when the drawn member is in a tail of the ensemble. Describe the actual case.
     if ecs_narrowing < 0.3:
-        message += 'Arvio tarkentui – mutta vähemmän kuin voisi odottaa!'
+        message += t('ob_small')
     else:
         prior_mean = _window_mean_members(st.session_state['cuts'], OBS_WINDOW).mean()
-        direction = 'vähemmän' if observed < prior_mean else 'enemmän'
-        message += (f'Tällä kertaa havainnot kertoivat paljon, koska ilmastomme lämpeni selvästi '
-                    f'{direction} kuin ilmastot keskimäärin ({_fi(prior_mean, 2)} °C). Yleensä '
-                    'arvio tarkentuu tässä vaiheessa vain vähän.')
+        direction = t('ob_less') if observed < prior_mean else t('ob_more')
+        message += t('ob_large', direction=direction, prior_mean=_num(prior_mean, 2))
     st.info(message)
-    with st.expander('Miksi 15 vuoden lämpeneminen kertoo ilmastoherkkyydestä yleensä niin vähän?'):
-        st.markdown(
-            '- Lähivuosikymmenten lämpeneminen riippuu ennen kaikkea **lyhyen aikavälin vasteesta** '
-            '(TCR): meret lämpenevät hitaasti, eikä ilmasto ole ehtinyt tasapainoon. ECS kuvaa '
-            'lopullista tasapainoa.\n'
-            '- **Pienhiukkaset (aerosolit)** viilentävät ilmastoa, ja niiden vaikutus tunnetaan '
-            'huonosti. Herkkä ilmasto, jossa on voimakas aerosolien viilennys, lämpenee lähes '
-            'yhtä paljon kuin vähemmän herkkä, jolla viilennys on heikko.\n'
-            '- Sama pätee oikeaan maailmaan: havaittu lämpeneminen rajaa ilmastoherkkyyttä vain löyhästi.'
-        )
-    if st.button('Tutkimus etenee →', type='primary'):
+    with st.expander(t('ob_expander_title')):
+        st.markdown(t('ob_expander_body'))
+    if st.button(t('ob_next'), type='primary'):
         _goto('research')
 
 
 def _screen_research():
-    st.title('🧪 Tutkimus etenee')
+    st.title(t('re_title'))
     _nav_bar()
     clue = st.session_state['ecs_clue']
-    st.markdown(
-        f'Vuoteen {CHECKPOINT} mennessä tutkijat ovat oppineet lisää esimerkiksi muinaisilmastoista '
-        'ja pilvien käyttäytymisestä. Uusi tutkimus arvioi meidän ilmastomme herkkyydeksi '
-        f'**{_fi(clue, 1)} °C ± {_fi(1.96 * ECS_CLUE_SD, 1)} °C** (95 %:n väli).'
-    )
+    st.markdown(t('re_intro', year=CHECKPOINT, clue=_num(clue, 1), err=_num(1.96 * ECS_CLUE_SD, 1)))
     temperature, stages = _show_estimates(st.session_state['cuts'], None, 'research')
     ecs = _load_screened()['ECS']
     ecs_old, ecs_new = _interval_width_change(ecs, stages, 'prior', 'research')
     t_old, t_new = _interval_width_change(temperature, stages, 'prior', 'research')
-    st.info(
-        f'Alkuarvioon verrattuna ilmastoherkkyyden 95 %:n väli kapeni **{_fi(ecs_old, 1)} → '
-        f'{_fi(ecs_new, 1)} °C** ({(1 - ecs_new / ecs_old) * 100:.0f} %), vuoden {ESTIMATE_YEAR} '
-        f'lämpenemisen **{_fi(t_old, 1)} → {_fi(t_new, 1)} °C** ({(1 - t_new / t_old) * 100:.0f} %).'
-    )
-    with st.expander('Miksi lämpenemisen arvio ei tarkentunut yhtä paljon kuin ilmastoherkkyyden?'):
-        st.markdown(
-            f'Vuoden {ESTIMATE_YEAR} lämpeneminen ei riipu vain ilmastoherkkyydestä. Siihen '
-            'vaikuttavat myös lyhyen aikavälin vaste, aerosolien viilennys ja se, kuinka paljon '
-            'meret ja kasvillisuus sitovat hiilidioksidia. Vaikka ilmastoherkkyys tunnettaisiin tarkasti, '
-            'lämpenemisessä olisi silti epävarmuutta.'
-        )
-    if st.button('Vaihe 2: Nollapäästövuodet →', type='primary'):
+    st.info(t('re_narrow', ecs_old=_num(ecs_old, 1), ecs_new=_num(ecs_new, 1),
+              ecs_pct=f'{(1 - ecs_new / ecs_old) * 100:.0f}', year=ESTIMATE_YEAR,
+              t_old=_num(t_old, 1), t_new=_num(t_new, 1), t_pct=f'{(1 - t_new / t_old) * 100:.0f}'))
+    with st.expander(t('re_expander_title')):
+        st.markdown(t('re_expander_body', year=ESTIMATE_YEAR))
+    if st.button(t('re_next'), type='primary'):
         _goto('phase2')
 
 
 def _screen_phase2():
-    st.title('🎯 Milloin kukin alue saavuttaa nollapäästöt?')
-    st.markdown(
-        'Jokainen ryhmä päättää, milloin **oman alueensa** fossiiliset CO₂-päästöt laskevat nollaan. '
-        'Metaani, maankäytön päästöt ja muut kasvihuonekaasut seuraavat nykyistä kehitystä (SSP2-4.5). '
-        'Käyttäkää päätöksessä sitä, mitä nyt tiedätte ilmastostanne.'
-    )
+    st.title(t('p2_title'))
+    st.markdown(t('p2_intro'))
 
     _nav_bar()
 
@@ -1218,7 +1215,7 @@ def _screen_phase2():
     netzero_years   = st.session_state['netzero_years']
     netzero_indices = st.session_state['netzero_indices']
 
-    st.subheader('Valitse nollapäästövuosi alueittain')
+    st.subheader(t('p2_subheader'))
     cols = st.columns(len(REGION_EMISSIONS_BASE_GTCO2))
     for col, region in zip(cols, REGION_EMISSIONS_BASE_GTCO2):
         with col:
@@ -1226,17 +1223,17 @@ def _screen_phase2():
             nz     = _nz_input(region, min_nz, netzero_indices)
             netzero_years[region] = nz
             em_chk = REGION_EMISSIONS_BASE_GTCO2[region] * (1 - cuts.get(region, 0.0))
-            st.caption(f'{CHECKPOINT}: {_fi(em_chk, 1)} GtCO₂/v → 0 vuoteen **{nz}**')
+            st.caption(t('p2_region_caption', year=CHECKPOINT, em=_num(em_chk, 1), nz=nz))
     st.session_state['netzero_years']   = netzero_years
     st.session_state['netzero_indices'] = netzero_indices
 
     st.pyplot(_emissions_pathway_chart(cuts, netzero_years))
 
-    st.subheader('Arvio näillä päätöksillä')
+    st.subheader(t('p2_estimate'))
     _show_estimates(cuts, netzero_years, 'phase2')
 
-    if st.button('🔬 Laske huipputulämpötila', type='primary'):
-        with st.spinner('Lasketaan FaIR-simulaatio...'):
+    if st.button(t('p2_button'), type='primary'):
+        with st.spinner(t('spinner_fair')):
             temp = run_fair_game(
                 cuts,
                 netzero_years=netzero_years,
@@ -1249,7 +1246,7 @@ def _screen_phase2():
     if st.session_state['temp_phase2'] is None:
         return
     if st.session_state['phase2_netzero_used'] != netzero_years:
-        st.info('Valinnat muuttuivat – laskekaa simulaatio uudelleen nähdäksenne tuloksen.')
+        st.info(t('p2_stale'))
         return
 
     temp2 = st.session_state['temp_phase2']
@@ -1262,7 +1259,7 @@ def _screen_phase2():
     sim_end = int(temp2.year.max())
     display_end = min(peak_yr + 30, sim_end)
 
-    st.subheader('📊 Simulaatiotulokset')
+    st.subheader(t('p2_results'))
     netzero_key = '-'.join(str(netzero_years[r]) for r in REGION_EMISSIONS_BASE_GTCO2)
     _show_temperature_animation(
         f'phase2-{st.session_state["config_id"]}-{netzero_key}',
@@ -1271,62 +1268,80 @@ def _screen_phase2():
     )
 
     if peak_temp < PARIS_15:
-        st.success('✅ Pysytään 1,5 °C:n tavoitteessa!')
+        st.success(t('p2_below15'))
     elif peak_temp < PARIS_20:
-        st.warning('⚠️ Alle 2 °C, mutta yli 1,5 °C')
+        st.warning(t('p2_between'))
     else:
-        st.error('❌ Ylitetään 2 °C:n Pariisin raja')
+        st.error(t('p2_above20'))
 
-    if st.button('🔎 Paljasta ilmaston salaisuus →', type='primary'):
+    if st.button(t('p2_next'), type='primary'):
         _goto('reveal')
 
 
 def _screen_reveal():
-    st.title('🔎 Paljastus: millainen ilmastomme oikeasti oli?')
+    st.title(t('rv_title'))
     _nav_bar()
     cuts = st.session_state['cuts']
     netzero_years = st.session_state['phase2_netzero_used']
     if netzero_years is None or st.session_state['temp_phase2'] is None:
-        st.info('Laskekaa ensin vaiheen 2 simulaatio.')
+        st.info(t('rv_need_phase2'))
         return
 
     true_ecs = st.session_state['ecs']
     true_temp = float(st.session_state['temp_phase2'].sel(year=ESTIMATE_YEAR))
-    st.markdown(
-        f'Meidän ilmastomme herkkyys oli **{_fi(true_ecs, 2)} °C**, ja teidän päätöksillänne '
-        f'se lämpeni vuoteen {ESTIMATE_YEAR} mennessä **{_fi(true_temp, 2)} °C**.'
-    )
+    st.markdown(t('rv_intro', ecs=_num(true_ecs, 2), year=ESTIMATE_YEAR, temp=_num(true_temp, 2)))
     temperature, stages = _show_estimates(cuts, netzero_years, 'reveal',
                                           truth=(true_ecs, true_temp))
 
     final = stages['research']
     ecs = _load_screened()['ECS']
     checks = [
-        ('Ilmastoherkkyys', ecs, true_ecs),
-        (f'Lämpeneminen {ESTIMATE_YEAR}', temperature, true_temp),
+        (t('rv_ecs_name'), ecs, true_ecs),
+        (t('rv_temp_name', year=ESTIMATE_YEAR), temperature, true_temp),
     ]
     for name, values, true_value in checks:
         mean, lo, hi = weighted_mean_interval(values, final)
+        result = dict(name=name, value=_num(true_value, 2), lo=_num(lo, 2), hi=_num(hi, 2))
         if lo <= true_value <= hi:
-            st.success(f'🎯 {name}: oikea arvo {_fi(true_value, 2)} °C osui arvion 95 %:n välille '
-                       f'({_fi(lo, 2)}–{_fi(hi, 2)} °C, paras arvio {_fi(mean, 2)} °C).')
+            st.success(t('rv_hit', mean=_num(mean, 2), **result))
         else:
-            st.warning(f'😮 {name}: oikea arvo {_fi(true_value, 2)} °C jäi arvion 95 %:n välin '
-                       f'({_fi(lo, 2)}–{_fi(hi, 2)} °C) ulkopuolelle. Näin käy noin kerran 20 pelistä – '
-                       'se kuuluu epävarmuuteen.')
-    st.markdown(
-        '**Mitä tästä opimme?** Emme voi tietää etukäteen, kuinka herkkä ilmasto on. Päätökset on '
-        'silti tehtävä nyt. Mitä nopeammin päästöjä vähennetään, sitä pienempi on riski päätyä '
-        'vaarallisen lämpenemisen puolelle.'
+            st.warning(t('rv_miss', **result))
+    st.markdown(t('rv_lesson'))
+
+
+def _language_picker():
+    """First page of a new session: choose the language (both languages shown, nothing chosen yet)."""
+    st.title('🌍 Ilmastoneuvottelupeli · Climate Negotiation Game')
+    st.markdown('Valitse kieli · Choose the language')
+    col_fi, col_en, _ = st.columns([1, 1, 2])
+    if col_fi.button('🇫🇮 Suomi', type='primary', width='stretch'):
+        st.session_state['lang'] = 'fi'
+        st.rerun()
+    if col_en.button('🇬🇧 English', type='primary', width='stretch'):
+        st.session_state['lang'] = 'en'
+        st.rerun()
+
+
+def _language_switch():
+    """Small FI/EN switch at the top right of every page. Choices and results are kept."""
+    _, col = st.columns([6, 1])
+    st.session_state['lang'] = col.radio(
+        'Kieli · Language', options=LANGUAGES, format_func=str.upper,
+        index=LANGUAGES.index(st.session_state['lang']), horizontal=True,
+        key='lang_switch', label_visibility='collapsed',
     )
 
 
 def main():
     st.set_page_config(
-        page_title='Ilmastoneuvottelupeli',
+        page_title='Ilmastoneuvottelupeli · Climate Negotiation Game',
         page_icon='🌍',
         layout='wide',
     )
+    if 'lang' not in st.session_state:
+        _language_picker()
+        return
+    _language_switch()
     _init_state()
 
     if st.session_state['show_impacts']:
@@ -1345,9 +1360,11 @@ def main():
         screen_functions[st.session_state['screen']]()
 
     st.markdown('---')
-    if st.button('🔄 Aloita alusta (uusi ilmasto)'):
+    if st.button(t('start_over')):
+        # The language is kept: whoever restarts has already chosen it
         for key in list(st.session_state.keys()):
-            del st.session_state[key]
+            if key != 'lang':
+                del st.session_state[key]
         st.rerun()
 
 
