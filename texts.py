@@ -94,6 +94,7 @@ TEXTS = {
     # --- temperature chart ---
     'series_obs': {'fi': 'Havaittu', 'en': 'Observed'},
     'series_model': {'fi': 'Ilmastomalli', 'en': 'Climate model'},
+    'series_obs_unc': {'fi': 'Havaintojen epävarmuus (95 %)', 'en': 'Observational uncertainty (95%)'},
     'tt_series': {'fi': 'Sarja', 'en': 'Series'},
     'tt_temp': {'fi': 'Lämpötila', 'en': 'Temperature'},
     'paris_15': {'fi': '1,5 °C (Pariisin tavoite)', 'en': '1.5 °C (Paris goal)'},

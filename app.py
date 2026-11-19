@@ -36,6 +36,7 @@ from fair_runner import (
     REGION_EMISSIONS_BASE_GTCO2,
     load_screened_configs,
     load_observed_gmst,
+    load_obs_uncertainty,
     run_fair_game,
     annual_series,
     regional_emissions_in_year,
@@ -74,7 +75,14 @@ ESTIMATE_YEAR   = 2100   # year of the warming estimate shown to the players
 # The two error draws are independent, so the posterior weights multiply. Both are drawn once per
 # game, at the first simulation, so revisiting screens cannot average the noise away.
 OBS_WINDOW      = (2031, 2040)   # annual years observed by the end of 2040 (trailing decade)
+# HadCRUT5 ensemble (precompute_obs_error.py): 1 sigma ~0.043 °C for a recent year vs 1850-1900,
+# mostly the common baseline error, so a decade mean is about as uncertain: 0.05 is consistent.
 OBS_2040_SD     = 0.05           # °C
+# Chart only: 95 % observational band from HadCRUT5. Years after this window (2025 in HadCRUT
+# 5.0.2.0 looks provisional, its coverage error is 15x the neighbours') get the window's mean
+# half-width (~0.08 °C), i.e. future observations are assumed as good as today's.
+OBS_BAND_RECENT = (2015, 2024)
+OBS_BAND_COLOR  = '#9AA0A8'
 ECS_CLUE_SD     = 0.5            # °C
 # Decade centred on 2040: annual years 2035-2044 (mid-points 2035.5…2044.5 centre on 2040.0).
 # By 2040 only 2035-2040 are known; 2041-2044 are projected with the members weighted by updates 1
@@ -339,6 +347,21 @@ def _load_screened():
 @st.cache_data
 def _load_gmst():
     return load_observed_gmst()
+
+
+@st.cache_data
+def _load_obs_band():
+    """
+    95 % half-width of an annual observation for every year from 1850 to 2300. After
+    OBS_BAND_RECENT (2025, see there, and the drawn climate's simulated years, which in the story
+    are later observed too) it is the recent mean: measured as well as today.
+    """
+    half_width = load_obs_uncertainty()
+    recent = float(half_width.loc[OBS_BAND_RECENT[0]:OBS_BAND_RECENT[1]].mean())
+    years = np.arange(int(half_width.index.min()), 2301)
+    band = half_width.reindex(years)
+    band[band.index > OBS_BAND_RECENT[1]] = recent
+    return band
 
 
 # Screens in game order (see the module docstring). Players move forward with the primary
@@ -766,7 +789,24 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
     lines = pd.concat([observed, model], ignore_index=True)
     lines['vuosi'] = np.floor(lines['x']).astype(int)    # calendar year for the tooltip
     lines['lämpötila'] = [_num(value, 2) + ' °C' for value in lines['T']]
+
+    # Observational uncertainty (95 %, HadCRUT5) around the observed record and around the drawn
+    # climate's line (its years are "observed" in the story as they happen). Drawn around the true
+    # values: noisy observations are never plotted, they could fake a threshold crossing.
+    band_hw = _load_obs_band()
+    band = pd.DataFrame({'x': np.concatenate([obs['year'].values, yr_fut[shown] + 0.5]),
+                         'T': np.concatenate([obs['gmst'].values, t_fut[shown]])})
+    half_width = band_hw.loc[np.floor(band['x']).astype(int)].values
+    band['lo'], band['hi'] = band['T'] - half_width, band['T'] + half_width
+    band['sarja'] = t('series_obs_unc')
     layers = [
+        alt.Chart(band).mark_area(opacity=0.35, clip=True).encode(
+            x=x_enc, y=alt.Y('lo:Q', scale=y_scale,
+                             axis=alt.Axis(title=t('axis_temp'), labelExpr=label_expr)), y2='hi:Q',
+            color=alt.Color('sarja:N', scale=alt.Scale(domain=[t('series_obs_unc')],
+                                                      range=[OBS_BAND_COLOR]),
+                            legend=alt.Legend(title=None, orient='bottom-right')),
+        ),
         alt.Chart(lines).mark_line(strokeWidth=2.2, clip=True).encode(
             x=x_enc, y=y_enc, detail='sarja:N', order='x:Q',
             color=alt.Color('sarja:N', scale=alt.Scale(domain=series, range=colors),

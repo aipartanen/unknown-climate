@@ -33,6 +33,7 @@ SPECIES_PROPERTIES_PATH = FAIR_CAL_DIR / 'output' / 'posteriors' / 'species_conf
 SCREENED_CONFIGS_PATH = _HERE / 'data' / 'screened_configs.csv'
 ESTIMATE_EMULATOR_PATH = _HERE / 'data' / 'estimate_emulator.csv'
 OBSERVED_GMST_PATH = _HERE / 'data' / 'IGCC_GMST_1850-2025.csv'
+OBS_UNCERTAINTY_PATH = _HERE / 'data' / 'obs_uncertainty.csv'   # precompute_obs_error.py
 
 # Base SSP for non-CO2 gases and historical CO2.
 # SSP2-4.5 is "middle of the road" — reasonable as current-policy backdrop.
@@ -104,6 +105,15 @@ def load_observed_gmst() -> pd.DataFrame:
     """
     df = pd.read_csv(OBSERVED_GMST_PATH)
     return df[['year', 'gmst']]
+
+
+def load_obs_uncertainty() -> pd.Series:
+    """
+    95 % half-width (°C) of annual GMST relative to 1850–1900, from the HadCRUT5 ensemble
+    (see precompute_obs_error.py). Index: calendar year (int, 1850 ... 2025).
+    """
+    df = pd.read_csv(OBS_UNCERTAINTY_PATH)
+    return df.set_index('year')['half_width_95']
 
 
 def rebase_to_1850_1900(temp: xr.DataArray) -> xr.DataArray:

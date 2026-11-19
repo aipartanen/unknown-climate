@@ -33,6 +33,10 @@ The app is not yet ready for release. The plan for release is saved at
   the annual-mean temperature for every year 2031–2045 and 2100, writes `data/estimate_emulator.csv`.
   Gives the app ensemble estimates without running FaIR. Re-run (~5 min) after any change to the
   emissions setup, screening or targets; run `precompute_configs.py` first.
+- `precompute_obs_error.py` — 95 % observational uncertainty of annual GMST vs 1850–1900 from the
+  HadCRUT5 200-member ensemble (Morice et al. 2021; raw file in gitignored `data/raw/`), writes
+  `data/obs_uncertainty.csv`. Chart band only (around observations and the whole drawn-climate
+  line, recent ±0.084 °C after 2024); it does not enter the Bayes updates. Noisy observations are never plotted.
 - `app.py` — Streamlit UI (main entry point)
 - `texts.py` — all user-visible text in both languages (`t('key', ...)`)
 - `make_presentation_figure.py` — standalone figure generation utility
