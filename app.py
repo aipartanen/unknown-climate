@@ -284,7 +284,7 @@ SCREEN_TITLES = {
 # Estimate stages: (Finnish label, colour). A stage is shown from its own screen onwards.
 STAGE_STYLE = {
     'prior':    ('Alkuarvio', '#8A9099'),
-    'obs2040':  ('Havainnon 2040 jälkeen', '#5A84E2'),
+    'obs2040':  ('2025–2040 havaintojen jälkeen', '#5A84E2'),
     'research': ('Tutkimuksen jälkeen', '#E26D91'),
 }
 # Light chart style (the app theme is pinned to light in .streamlit/config.toml)
@@ -962,7 +962,7 @@ def _screen_pledges():
     # Once a member is drawn the 2040 observation depends on these pledges, so they are locked.
     locked = st.session_state['config_id'] is not None
     if locked:
-        st.warning('🔒 Lupaukset on lukittu, koska maapallo on jo arvottu. '
+        st.warning('🔒 Lupaukset on lukittu, koska ilmasto on jo arvottu. '
                    'Jos haluatte muuttaa niitä, aloittakaa alusta.')
 
     cuts          = st.session_state['cuts']
@@ -1000,7 +1000,7 @@ def _screen_pledges():
     est_end = emulate_temperature(cuts, None, ESTIMATE_YEAR)
     st.info(
         '**Alkuarvio lämpötilasta** (keskiarvo ja 95 %:n väli – emme vielä tiedä, '
-        'kuinka herkkä maapallomme on):  \n'
+        'kuinka herkkä ilmastomme on):  \n'
         f'{CHECKPOINT}: **{_fi(est_40.mean(), 1)} °C** '
         f'({_fi(est_40.quantile(0.025), 1)}–{_fi(est_40.quantile(0.975), 1)} °C)  \n'
         f'{ESTIMATE_YEAR}: **{_fi(est_end.mean(), 1)} °C** '
@@ -1019,29 +1019,29 @@ def _screen_prior():
     st.title('🤔 Mitä tiedämme ennen kuin mitään on tapahtunut?')
     _nav_bar()
     st.markdown(
-        'Tutkijat eivät tiedä tarkalleen, **kuinka herkästi maapallo reagoi** hiilidioksidiin. '
+        'Tutkijat eivät tiedä tarkalleen, **kuinka herkästi ilmasto reagoi** hiilidioksidiin. '
         f'Siksi ilmastomallissa on {len(_load_screened())} versiota – '
-        '**mahdollista maapalloa** – jotka kaikki sopivat yhteen tähänastisten havaintojen kanssa.'
+        '**mahdollista ilmastoa** – jotka kaikki sopivat yhteen tähänastisten havaintojen kanssa.'
     )
     st.markdown(
-        '**Ilmastoherkkyys (ECS)** kertoo, kuinka paljon maapallo lopulta lämpenisi, jos ilman '
-        'CO₂-pitoisuus kaksinkertaistuisi pysyvästi. Mitä suurempi ECS, sitä enemmän samat päästöt '
+        '**Ilmastoherkkyys ** kertoo, kuinka paljon ilmasto lopulta lämpenisi, jos ilman '
+        'CO₂-pitoisuus kaksinkertaistuisi pysyvästi. Mitä suurempi ilmastoherkkyys, sitä enemmän samat päästöt '
         'lämmittävät.'
     )
     _show_estimates(st.session_state['cuts'], None, 'prior')
     st.info('👆 Tämä on **alkuarvio**. Harmaa jakauma pysyy näkyvissä koko pelin ajan, '
             'jotta näette, miten arvio tarkentuu.')
-    if st.button('Arvotaan meidän maapallomme →', type='primary'):
+    if st.button('Arvotaan meidän ilmastomme →', type='primary'):
         _goto('draw')
 
 
 def _screen_draw():
-    st.title('🎲 Arvonta: mikä maapalloista on meidän?')
+    st.title('🎲 Arvonta: mikä ilmastoista on meidän?')
     _nav_bar()
     screened = _load_screened()
     n_members = len(screened)
     st.markdown(
-        f'Arvotaan yksi {n_members} mahdollisesta maapallosta. Se on pelin "todellinen" maapallo: '
+        f'Arvotaan yksi {n_members} mahdollisesta ilmastosta. Se on pelin "todellinen" ilmasto: '
         '**sen ilmastoherkkyys on salaisuus**, ja teidän on pääteltävä sitä havainnoista, '
         'kuten tutkijat tekevät oikeassakin maailmassa.'
     )
@@ -1049,7 +1049,7 @@ def _screen_draw():
     placeholder = st.empty()
     if st.session_state['config_id'] is None:
         placeholder.markdown(_lottery_html(n_members, None), unsafe_allow_html=True)
-        if st.button('🎲 Arvo maapallo', type='primary'):
+        if st.button('🎲 Arvo ilmasto', type='primary'):
             # Flicker through random cells, slowing down. The cell is only a visual: the member is
             # drawn uniformly and independently, so the grid position carries no information.
             for delay in np.linspace(0.04, 0.28, 18):
@@ -1065,7 +1065,7 @@ def _screen_draw():
 
     placeholder.markdown(_lottery_html(n_members, st.session_state['grid_position']),
                          unsafe_allow_html=True)
-    st.success(f'✨ Maapallo nro {st.session_state["grid_position"] + 1} arvottu! '
+    st.success(f'✨ Ilmasto nro {st.session_state["grid_position"] + 1} arvottu! '
                'Sen ilmastoherkkyys paljastetaan vasta pelin lopussa.')
     if st.session_state['temp_phase1'] is None:
         if st.button(f'🔬 Simuloi {ANIM_START}–{CHECKPOINT} →', type='primary'):
@@ -1113,7 +1113,7 @@ def _screen_sim1():
     st.markdown(
         f'**Miksi keskiarvo eikä vain vuosi {CHECKPOINT}?** Yksittäinen vuosi heittelee luonnollisen '
         'vaihtelun (esim. El Niño) takia. Pariisin sopimuksen rajat tarkoittavat pitkän ajan '
-        f'lämpenemistä, joten sitä arvioidaan vuosikymmenen keskiarvona. Vuoden {CHECKPOINT} lopussa '
+        f'lämpenemistä, joten sitä arvioidaan tässä pelissä vuosikymmenen keskiarvona. Vuoden {CHECKPOINT} lopussa '
         f'vuodet {OBS_WINDOW[1] + 1}–{CENTRED_WINDOW[1]} ovat vielä tulevaisuutta, joten ne on '
         'arvioitu (katkoviiva ja varjostus). Arvio käyttää kaikkea vuoden '
         f'{CHECKPOINT} lopussa saatavilla olevaa tietoa: mittauksia ja uusinta tutkimusta, '
@@ -1131,14 +1131,14 @@ def _screen_sim1():
 
 
 def _screen_obs2040():
-    st.title(f'🔭 Havainto {CHECKPOINT}: mitä lämpeneminen kertoo maapallostamme?')
+    st.title(f'🔭 Havainto {CHECKPOINT}: mitä lämpeneminen kertoo ilmastostamme?')
     _nav_bar()
     observed = st.session_state['obs_window_mean']
     st.markdown(
-        f'Vuoden {CHECKPOINT} lopussa tiedämme, kuinka paljon meidän maapallomme lämpeni. '
+        f'Vuoden {CHECKPOINT} lopussa tiedämme, kuinka paljon meidän ilmastomme lämpeni. '
         f'Mitattu keskilämpötila vuosina {OBS_WINDOW[0]}–{OBS_WINDOW[1]}: '
         f'**{_fi(observed, 2)} °C** (mittausepävarmuus ±{_fi(1.96 * OBS_2040_SD, 1)} °C).  \n'
-        'Maapallot, joiden lämpeneminen sopii tähän mittaukseen, muuttuvat todennäköisemmiksi.'
+        'Ilmastot, joiden lämpeneminen sopii tähän mittaukseen, muuttuvat todennäköisemmiksi.'
     )
     temperature, stages = _show_estimates(st.session_state['cuts'], None, 'obs2040')
     ecs = _load_screened()['ECS']
@@ -1157,8 +1157,8 @@ def _screen_obs2040():
     else:
         prior_mean = _window_mean_members(st.session_state['cuts'], OBS_WINDOW).mean()
         direction = 'vähemmän' if observed < prior_mean else 'enemmän'
-        message += (f'Tällä kertaa havainto kertoi paljon, koska maapallomme lämpeni selvästi '
-                    f'{direction} kuin maapallot keskimäärin ({_fi(prior_mean, 2)} °C). Yleensä '
+        message += (f'Tällä kertaa havainnot kertoivat paljon, koska ilmastomme lämpeni selvästi '
+                    f'{direction} kuin ilmastot keskimäärin ({_fi(prior_mean, 2)} °C). Yleensä '
                     'arvio tarkentuu tässä vaiheessa vain vähän.')
     st.info(message)
     with st.expander('Miksi 15 vuoden lämpeneminen kertoo ilmastoherkkyydestä yleensä niin vähän?'):
@@ -1167,9 +1167,9 @@ def _screen_obs2040():
             '(TCR): meret lämpenevät hitaasti, eikä ilmasto ole ehtinyt tasapainoon. ECS kuvaa '
             'lopullista tasapainoa.\n'
             '- **Pienhiukkaset (aerosolit)** viilentävät ilmastoa, ja niiden vaikutus tunnetaan '
-            'huonosti. Herkkä maapallo, jolla on voimakas aerosolien viilennys, lämpenee lähes '
+            'huonosti. Herkkä ilmasto, jossa on voimakas aerosolien viilennys, lämpenee lähes '
             'yhtä paljon kuin vähemmän herkkä, jolla viilennys on heikko.\n'
-            '- Sama pätee oikeaan maailmaan: havaittu lämpeneminen rajaa ECS:ää vain löyhästi.'
+            '- Sama pätee oikeaan maailmaan: havaittu lämpeneminen rajaa ilmastoherkkyyttä vain löyhästi.'
         )
     if st.button('Tutkimus etenee →', type='primary'):
         _goto('research')
@@ -1181,7 +1181,7 @@ def _screen_research():
     clue = st.session_state['ecs_clue']
     st.markdown(
         f'Vuoteen {CHECKPOINT} mennessä tutkijat ovat oppineet lisää esimerkiksi muinaisilmastoista '
-        'ja pilvien käyttäytymisestä. Uusi tutkimus arvioi meidän maapallomme ilmastoherkkyydeksi '
+        'ja pilvien käyttäytymisestä. Uusi tutkimus arvioi meidän ilmastomme herkkyydeksi '
         f'**{_fi(clue, 1)} °C ± {_fi(1.96 * ECS_CLUE_SD, 1)} °C** (95 %:n väli).'
     )
     temperature, stages = _show_estimates(st.session_state['cuts'], None, 'research')
@@ -1193,11 +1193,11 @@ def _screen_research():
         f'{_fi(ecs_new, 1)} °C** ({(1 - ecs_new / ecs_old) * 100:.0f} %), vuoden {ESTIMATE_YEAR} '
         f'lämpenemisen **{_fi(t_old, 1)} → {_fi(t_new, 1)} °C** ({(1 - t_new / t_old) * 100:.0f} %).'
     )
-    with st.expander('Miksi lämpenemisen arvio ei tarkentunut yhtä paljon kuin ECS?'):
+    with st.expander('Miksi lämpenemisen arvio ei tarkentunut yhtä paljon kuin ilmastoherkkyyden?'):
         st.markdown(
             f'Vuoden {ESTIMATE_YEAR} lämpeneminen ei riipu vain ilmastoherkkyydestä. Siihen '
             'vaikuttavat myös lyhyen aikavälin vaste, aerosolien viilennys ja se, kuinka paljon '
-            'meret ja kasvillisuus sitovat hiilidioksidia. Vaikka ECS tunnettaisiin tarkasti, '
+            'meret ja kasvillisuus sitovat hiilidioksidia. Vaikka ilmastoherkkyys tunnettaisiin tarkasti, '
             'lämpenemisessä olisi silti epävarmuutta.'
         )
     if st.button('Vaihe 2: Nollapäästövuodet →', type='primary'):
@@ -1209,7 +1209,7 @@ def _screen_phase2():
     st.markdown(
         'Jokainen ryhmä päättää, milloin **oman alueensa** fossiiliset CO₂-päästöt laskevat nollaan. '
         'Metaani, maankäytön päästöt ja muut kasvihuonekaasut seuraavat nykyistä kehitystä (SSP2-4.5). '
-        'Käyttäkää päätöksessä sitä, mitä nyt tiedätte maapallostanne.'
+        'Käyttäkää päätöksessä sitä, mitä nyt tiedätte ilmastostanne.'
     )
 
     _nav_bar()
@@ -1277,12 +1277,12 @@ def _screen_phase2():
     else:
         st.error('❌ Ylitetään 2 °C:n Pariisin raja')
 
-    if st.button('🔎 Paljasta maapallon salaisuus →', type='primary'):
+    if st.button('🔎 Paljasta ilmaston salaisuus →', type='primary'):
         _goto('reveal')
 
 
 def _screen_reveal():
-    st.title('🔎 Paljastus: millainen maapallomme oikeasti oli?')
+    st.title('🔎 Paljastus: millainen ilmastomme oikeasti oli?')
     _nav_bar()
     cuts = st.session_state['cuts']
     netzero_years = st.session_state['phase2_netzero_used']
@@ -1293,7 +1293,7 @@ def _screen_reveal():
     true_ecs = st.session_state['ecs']
     true_temp = float(st.session_state['temp_phase2'].sel(year=ESTIMATE_YEAR))
     st.markdown(
-        f'Meidän maapallomme ilmastoherkkyys oli **{_fi(true_ecs, 2)} °C**, ja teidän päätöksillänne '
+        f'Meidän ilmastomme herkkyys oli **{_fi(true_ecs, 2)} °C**, ja teidän päätöksillänne '
         f'se lämpeni vuoteen {ESTIMATE_YEAR} mennessä **{_fi(true_temp, 2)} °C**.'
     )
     temperature, stages = _show_estimates(cuts, netzero_years, 'reveal',
@@ -1315,8 +1315,8 @@ def _screen_reveal():
                        f'({_fi(lo, 2)}–{_fi(hi, 2)} °C) ulkopuolelle. Näin käy noin kerran 20 pelistä – '
                        'se kuuluu epävarmuuteen.')
     st.markdown(
-        '**Mitä tästä opimme?** Emme voi tietää etukäteen, kuinka herkkä maapallo on. Päätökset on '
-        'silti tehtävä nyt – ja mitä varovaisempia ne ovat, sitä pienempi on riski päätyä '
+        '**Mitä tästä opimme?** Emme voi tietää etukäteen, kuinka herkkä ilmasto on. Päätökset on '
+        'silti tehtävä nyt. Mitä nopeammin päästöjä vähennetään, sitä pienempi on riski päätyä '
         'vaarallisen lämpenemisen puolelle.'
     )
 
@@ -1345,7 +1345,7 @@ def main():
         screen_functions[st.session_state['screen']]()
 
     st.markdown('---')
-    if st.button('🔄 Aloita alusta (uusi maapallo)'):
+    if st.button('🔄 Aloita alusta (uusi ilmasto)'):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
