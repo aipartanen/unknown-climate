@@ -51,7 +51,8 @@ choices are commented by the constants in `app.py` (`OBS_WINDOW`, `OBS_2040_SD`,
 - Both noise draws happen once per game (at the first simulation), so revisiting screens cannot
   average them away.
 - Paris verdict at 2040 uses the decade centred on 2040 (2035–2044): known years 2035–2040 plus
-  2041–2044 projected with the update-1 weights (not the prior, which is less accurate).
+  2041–2044 projected with the combined update-1 × update-2 weights (both exist at the end of 2040
+  in the story; the prior is clearly less accurate, research alone too).
 - Exceedance probabilities (1.5/2/3/4 °C in 2100) are sums of the current weights.
 
 ## Scientific conventions

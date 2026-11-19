@@ -74,9 +74,13 @@ OBS_WINDOW      = (2031, 2040)   # annual years observed by the end of 2040 (tra
 OBS_2040_SD     = 0.05           # °C
 ECS_CLUE_SD     = 0.5            # °C
 # Decade centred on 2040: annual years 2035-2044 (mid-points 2035.5…2044.5 centre on 2040.0).
-# By 2040 only 2035-2040 are known; 2041-2044 are projected with the members weighted by update 1
-# (checked offline: error sd 0.04 °C, vs 0.06 °C for the single year 2040 and 0.08 °C if the
-# unweighted prior were used for the projection). Paris thresholds are judged on this mean,
+# By 2040 only 2035-2040 are known; 2041-2044 are projected with the members weighted by updates 1
+# and 2, since in the story both the observation and the new research exist at the end of 2040.
+# Checked offline (1200 simulated games, emulator): error sd of the decade mean 0.038 °C with
+# both updates, 0.040 °C with update 1 only, 0.064 °C with update 2 only and 0.079 °C with the
+# unweighted prior (vs 0.06 °C for the single year 2040). The research estimate adds little here:
+# near-term warming is set by the transient response and aerosol forcing, which the observed
+# 2031-2040 mean constrains, not by ECS. Paris thresholds are judged on this mean,
 # like the WMO/Copernicus "current warming level" (observations + constrained projections).
 CENTRED_WINDOW  = (2035, 2044)
 EXCEEDANCE_LEVELS = (1.5, 2.0, 3.0, 4.0)   # °C, the warming levels of the impacts page
@@ -370,14 +374,14 @@ def _simulate_phase1(cuts):
     weights_research = weights_research / weights_research.sum()
 
     # Mean of the decade centred on 2040: the drawn member's known years up to 2040, the rest
-    # projected per member. Its spread across the update-1-weighted members is the uncertainty
-    # that comes from not yet knowing 2041-2044.
+    # projected per member. Its spread across the members weighted by both updates (all that is
+    # known at the end of 2040) is the uncertainty that comes from not yet knowing 2041-2044.
     known_sum = float(temp.sel(year=slice(CENTRED_WINDOW[0], OBS_WINDOW[1])).sum())
     projected_sum = sum(emulate_temperature(cuts, None, year)
                         for year in range(OBS_WINDOW[1] + 1, CENTRED_WINDOW[1] + 1))
     n_years = CENTRED_WINDOW[1] - CENTRED_WINDOW[0] + 1
     decade_members = (known_sum + projected_sum) / n_years
-    st.session_state['centred_decade'] = weighted_mean_interval(decade_members, weights_obs)
+    st.session_state['centred_decade'] = weighted_mean_interval(decade_members, weights_research)
 
     st.session_state['obs_window_mean'] = observed
     st.session_state['ecs_clue'] = clue
@@ -1111,7 +1115,9 @@ def _screen_sim1():
         'vaihtelun (esim. El Niño) takia. Pariisin sopimuksen rajat tarkoittavat pitkän ajan '
         f'lämpenemistä, joten sitä arvioidaan vuosikymmenen keskiarvona. Vuoden {CHECKPOINT} lopussa '
         f'vuodet {OBS_WINDOW[1] + 1}–{CENTRED_WINDOW[1]} ovat vielä tulevaisuutta, joten ne on '
-        'arvioitu (katkoviiva ja varjostus).'
+        'arvioitu (katkoviiva ja varjostus). Arvio käyttää kaikkea vuoden '
+        f'{CHECKPOINT} lopussa saatavilla olevaa tietoa: mittauksia ja uusinta tutkimusta, '
+        'joihin tutustutte seuraavaksi.'
     )
     if single_above != decade_above:
         st.info(f'💡 Huomatkaa: vuosi {CHECKPOINT} ({_fi(t_single, 2)} °C) ja vuosikymmenen keskiarvo '
