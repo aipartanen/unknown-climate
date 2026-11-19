@@ -8,20 +8,27 @@ Built with [Streamlit](https://streamlit.io/) and the [FaIR v2.2](https://docs.f
 Students are divided into five groups, each representing a major emitting region:
 **China, USA, EU, India, Rest of World**.
 
-The game runs in two phases:
+The game runs as a sequence of screens. Its second theme is uncertainty: the climate
+sensitivity of the simulated Earth is unknown to the players and has to be learned.
 
-**Phase 1 — Emission pledges to 2040**
-Each group sets a fossil CO₂ reduction target for their region, relative to 2025 emissions.
-After all groups agree, the teacher clicks *Simuloi!* to run a FaIR simulation.
-The app reveals the latest observed warming (2025) and the projected temperature in 2040,
-and shows which Paris Agreement threshold the combined pledges hit.
-At this point the climate model's Equilibrium Climate Sensitivity (ECS) is also revealed,
-giving students context for Phase 2.
+1. **Pledges** — each group sets a fossil CO₂ cut for 2040, relative to 2025 emissions.
+2. **Prior estimate** — histograms of ECS and 2100 warming over the whole model ensemble,
+   with the probability of exceeding 1.5, 2, 3 and 4 °C.
+3. **Draw** — one ensemble member ("one possible Earth") is drawn at random. Its ECS stays
+   hidden, and the pledges are locked.
+4. **Simulation to 2040** — FaIR run of the drawn member. The single year 2040 is shown next to
+   the mean of the decade centred on 2040 (2035–2044; the years after 2040 are projected).
+   The Paris thresholds are judged on the decade mean.
+5. **Observation 2040** — the observed 2031–2040 mean updates the estimates (Bayesian
+   reweighting of the ensemble). Usually this narrows them only a little.
+6. **Research advances** — a noisy research estimate of ECS narrows them clearly.
+7. **Net-zero years** — each group decides when their region's CO₂ emissions reach net zero,
+   using the updated estimates. A second FaIR run shows the trajectory to peak warming.
+8. **Reveal** — the drawn Earth's true ECS and 2100 warming against the estimates.
 
-**Phase 2 — Net-zero years**
-Each group decides when their region's CO₂ emissions reach net zero (2040–2100).
-A second FaIR run shows the full temperature trajectory to peak warming,
-including how it compares to the Phase 1 scenario.
+An impacts page (what 1.5–4 °C means globally and in Finland, with the probability of each
+level under the players' decisions) can be opened from every screen. All temperatures are
+annual means relative to 1850–1900.
 
 ## Climate model
 
@@ -71,7 +78,8 @@ Open the printed URL in a browser (or project it for the class).
 | File | Purpose |
 |---|---|
 | `app.py` | Streamlit UI (Finnish text) |
-| `fair_runner.py` | FaIR wrapper: emissions builder, single-config run |
+| `fair_runner.py` | FaIR wrapper: emissions builder, single-config run, estimate helpers |
+| `precompute_estimates.py` | Offline emulator fit → `data/estimate_emulator.csv` (estimates without FaIR) |
 | `precompute_configs.py` | Offline screening script → `data/screened_configs.csv` |
 | `environment.yml` | Conda environment definition |
 | `data/screened_configs.csv` | Screened member shortlist; regenerate with `precompute_configs.py` |
