@@ -43,7 +43,7 @@ TEXTS = {
     'axis_temp': {'fi': 'Lämpötila-anomalia (°C)', 'en': 'Temperature anomaly (°C)'},
 
     # --- estimate histograms and exceedance probabilities ---
-    'est_ecs_title': {'fi': 'Ilmastoherkkyys (ECS)', 'en': 'Climate sensitivity (ECS)'},
+    'est_ecs_title': {'fi': 'Ilmastoherkkyys', 'en': 'Climate sensitivity (ECS)'},
     'est_temp_title': {'fi': 'Lämpeneminen vuonna {year}', 'en': 'Warming in {year}'},
     'est_true_value': {'fi': ' oikea arvo {value}', 'en': ' true value {value}'},
     'est_caption': {

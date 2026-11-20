@@ -525,8 +525,8 @@ def _estimate_figure(temperature, stages, truth=None):
                              gridspec_kw={'height_ratios': [3, 1.3], 'hspace': 0.08})
     fig.patch.set_facecolor(CHART_BG)
     panels = [
-        (ecs, t('est_ecs_title'), 'ECS (°C)', None if truth is None else truth[0]),
-        (temperature, t('est_temp_title', year=ESTIMATE_YEAR), t('axis_temp'),
+        (ecs, t('est_ecs_title'), '°C', None if truth is None else truth[0]),
+        (temperature, t('est_temp_title', year=ESTIMATE_YEAR), '°C',
          None if truth is None else truth[1]),
     ]
     n_stages = len(stages)
@@ -554,6 +554,14 @@ def _estimate_figure(temperature, stages, truth=None):
         if col == 1:
             ax_hist.axvline(PARIS_15, color='#65C06C', linewidth=1.2, linestyle='--')
             ax_hist.axvline(PARIS_20, color='#FFA73E', linewidth=1.2, linestyle='--')
+            # Same labels and text shades as the Paris lines of the temperature chart; rotated
+            # because the two lines are only 0.5 °C apart. Placed after the histograms so the
+            # y-limit is final.
+            for level, color, key in ((PARIS_15, '#65C06C', 'paris_15'),
+                                      (PARIS_20, '#FFA73E', 'paris_20')):
+                ax_hist.text(level, ax_hist.get_ylim()[1] * 0.98, t(key), rotation=90,
+                             color=TEXT_SHADE[color], fontsize=9, fontweight='bold',
+                             ha='right', va='top')
         if true_value is not None:
             for ax in (ax_hist, ax_bar):
                 ax.axvline(true_value, color=CHART_FG, linewidth=2.0, linestyle=':')
