@@ -49,9 +49,6 @@ Some of the files originate from further datasets:
   data are CC BY 4.0, <https://www.solarisheppa.kit.edu/75.php>.
   > Funke, B., et al. (2024). Towards the definition of a solar forcing dataset for CMIP7.
   > *Geosci. Model Dev.*, 17, 1217. <https://doi.org/10.5194/gmd-17-1217-2024>
-- **`data/forcing/volcanic_forcing_timebounds_cmip7.csv`** is volcanic effective radiative
-  forcing for CMIP7, as prepared in fair-calibrate.
-  **TODO: confirm the original volcanic dataset, its citation and its licence.**
 - **`data/forcing/IGCC_GMST_1850-2024.csv`**: the observed temperatures the calibration was
   constrained against. The game no longer reads this file (see the next section).
 
@@ -69,8 +66,8 @@ Science Data*. The most recent published edition is:
 
 **Observational uncertainty band** (`data/obs_uncertainty.csv`) is derived from HadCRUT5.
 HadCRUT.5.0.2.0 analysis, global annual ensemble series, downloaded 2026-11-19 from
-<https://www.metoffice.gov.uk/hadobs/hadcrut5/>. © British Crown Copyright, Met Office
-(**TODO: year of first publication**). Provided under the
+<https://www.metoffice.gov.uk/hadobs/hadcrut5/>. © British Crown Copyright, Met Office 2021.
+Provided under the
 [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
 
 > Morice, C. P., Kennedy, J. J., Rayner, N. A., et al. (2021). An updated assessment of
@@ -85,9 +82,14 @@ data release, as redistributed by **Our World in Data** in `owid-co2-data.csv`,
 <https://github.com/owid/co2-data>. Our World in Data publishes its data under CC BY 4.0;
 the Global Carbon Budget data keep their own terms.
 
-- Global Carbon Budget, <https://globalcarbonbudget.org/>.
-  **TODO: add the Global Carbon Budget 2025 paper (Friedlingstein et al., ESSD) with its DOI,
-  and the data licence.**
+- Global Carbon Budget 2025. The data are distributed through the ICOS Carbon Portal under its
+  data licence, CC BY 4.0 (<https://www.icos-cp.eu/data-services/data-portal/data-licence>). The
+  Global Carbon Project asks that the original data sources be cited:
+  > Friedlingstein, P., O'Sullivan, M., Jones, M. W., et al. (2026). Global Carbon Budget 2025.
+  > *Earth Syst. Sci. Data*, 18, 3211–3288. <https://doi.org/10.5194/essd-18-3211-2026>
+
+  > Global Carbon Project (2026). Supplemental data of Global Carbon Budget 2025 (Version 1.0)
+  > [Data set]. <https://doi.org/10.18160/gcp-2025>
 - Our World in Data, CO₂ and Greenhouse Gas Emissions,
   <https://ourworldindata.org/co2-and-greenhouse-gas-emissions>.
 
