@@ -1186,18 +1186,13 @@ def _screen_pledges():
         st.pyplot(_emissions_bar_chart(cuts, total_title))
     with col_estimate:
         st.subheader(t('pl_estimate'))
+        # Prior estimate for CHECKPOINT (whole screened ensemble, equal weights): mean and 95 %
+        # interval. ESTIMATE_YEAR is not repeated here; the histogram below shows it.
+        est_40 = emulate_temperature(cuts, None, CHECKPOINT)
+        st.info(t('pl_prior', year=CHECKPOINT, mean=_num(est_40.mean(), 1),
+                  lo=_num(est_40.quantile(0.025), 1), hi=_num(est_40.quantile(0.975), 1)))
         _show_estimates(cuts, None, 'prior', show_ecs=False, compact=True)
 
-    # Prior estimate (whole screened ensemble, equal weights): mean and 95 % interval.
-    est_40  = emulate_temperature(cuts, None, CHECKPOINT)
-    est_end = emulate_temperature(cuts, None, ESTIMATE_YEAR)
-    st.info(t(
-        'pl_prior',
-        year1=CHECKPOINT, mean1=_num(est_40.mean(), 1),
-        lo1=_num(est_40.quantile(0.025), 1), hi1=_num(est_40.quantile(0.975), 1),
-        year2=ESTIMATE_YEAR, mean2=_num(est_end.mean(), 1),
-        lo2=_num(est_end.quantile(0.025), 1), hi2=_num(est_end.quantile(0.975), 1),
-    ))
     st.caption(t('pl_assumption', year=CHECKPOINT, base_year=BASE_YEAR))
 
     if st.button(t('pl_next'), type='primary'):

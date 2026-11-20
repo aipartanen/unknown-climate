@@ -152,16 +152,13 @@ TEXTS = {
         'fi': 'Yhteensä {year}: {total} GtCO₂/vuosi ({change} vuoden {base_year} tasosta)',
         'en': 'Total {year}: {total} GtCO₂/year ({change} from the {base_year} level)',
     },
-    'pl_estimate': {'fi': 'Arvio näillä lupauksilla', 'en': 'Estimate with these pledges'},
+    'pl_estimate': {'fi': 'Alkuarvio näillä lupauksilla',
+                    'en': 'Initial estimate with these pledges'},
     'pl_prior': {
-        'fi': '**Alkuarvio lämpötilasta** (keskiarvo ja 95 %:n väli – emme vielä tiedä, '
-              'kuinka herkkä ilmastomme on):  \n'
-              '{year1}: **{mean1} °C** ({lo1}–{hi1} °C)  \n'
-              '{year2}: **{mean2} °C** ({lo2}–{hi2} °C)',
-        'en': '**Initial temperature estimate** (mean and 95% range – we do not yet know '
-              'how sensitive our climate is):  \n'
-              '{year1}: **{mean1} °C** ({lo1}–{hi1} °C)  \n'
-              '{year2}: **{mean2} °C** ({lo2}–{hi2} °C)',
+        'fi': 'Lämpeneminen {year}: **{mean} °C** ({lo}–{hi} °C)  \n'
+              'Keskiarvo ja 95 %:n väli – emme vielä tiedä, kuinka herkkä ilmastomme on.',
+        'en': 'Warming in {year}: **{mean} °C** ({lo}–{hi} °C)  \n'
+              'Mean and 95% range – we do not yet know how sensitive our climate is.',
     },
     'pl_assumption': {
         'fi': 'Oletus {year} jälkeen: kunkin alueen päästöt muuttuvat vuosittain yhtä paljon kuin '
