@@ -8,20 +8,34 @@ Pinned pip dependencies in `requirements.txt` (used by Streamlit Cloud); conda d
 `environment-dev.yml` (Python 3.11, FaIR 2.2). UI in Finnish and English: the language is
 chosen on the first page and can be switched at any time (FI/EN switch at the top right).
 
-## Publishing goal
+## Publishing and deployment
 
-**The intended end state is a publicly accessible website hosted on Streamlit Community Cloud
-(streamlit.io/cloud), with the source code released on a public GitHub repository.**
+Status: beta. Live at https://unknown-climate.streamlit.app/ on Streamlit Community Cloud, shared
+with invited reviewers before the public launch (`v1.0.0`; beta tag `v1.0.0-beta.1`). Open
+publishing tasks are tracked in `TODO.md` (untracked, local only).
 
-This means: when developing new features, prefer approaches that are compatible with
-cloud deployment on Streamlit Community Cloud. Specifically:
+- Repositories: `fmidev/unknown-climate` is the main public repo (code, issues, credits).
+  The app deploys from the fork `aipartanen/unknown-climate`, because the author has no admin
+  rights on fmidev. Local remotes: `origin` = fmidev, `personal` = fork.
+- **Every push to the fork's `main` goes live.** `git push origin main` saves work without
+  touching the app; push to `personal` only when a change is tested and meant to be released.
+  Never push to `personal` unless asked.
+- Dependencies: `requirements.txt` (pinned, pip) is what Streamlit Cloud installs; Python 3.11.
+  Add new dependencies there (pinned) and to `environment-dev.yml`. Pin transitive packages
+  when a new release breaks the app: `starlette==1.0.0` is pinned because starlette 1.10 made
+  `st.pyplot` images return HTTP 500 under Streamlit 1.57.
+- Test changes to dependencies with a clean pip venv from a fresh clone, and click through a whole
+  game checking that matplotlib images load (not only page headings).
+
+When developing new features, keep them compatible with Streamlit Community Cloud:
 - Avoid local file paths that would break in a cloud environment
 - Keep dependencies on PyPI (pip-installable), not just conda-forge
 - If adding precomputed data files, they must be committable to git or generatable on startup
-- No secrets or credentials hardcoded — use `python-dotenv` / environment variables
+- No secrets or credentials hardcoded; use environment variables or Streamlit secrets
+  (`st.secrets`). The app currently needs none.
 - The app should start cleanly with `streamlit run app.py` from a fresh clone
-
-The app is not yet ready for release.
+- Instructor options go in URL parameters (`st.query_params`), since script arguments cannot be
+  passed on Streamlit Cloud
 
 ## Pipeline
 
@@ -40,6 +54,8 @@ The app is not yet ready for release.
 - `app.py` — Streamlit UI (main entry point)
 - `texts.py` — all user-visible text in both languages (`t('key', ...)`)
 - `make_presentation_figure.py` — standalone figure generation utility
+- `docs/observational_uncertainty_options.md` — design notes on observational uncertainty (option A, the band, is implemented; option B is open)
+- `README.md` (setup, caveats, privacy), `CREDITS.md` (sources and licences), `LICENSE` (MIT)
 
 ## App structure
 
