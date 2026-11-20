@@ -62,12 +62,10 @@ Runs are stochastic with fixed per-member seeds, so a member always gives the sa
   sources, but they are not a rigorous synthesis of the research literature.
 - **Pledge options and decarbonisation rates are largely hand-picked.** The regional pledge
   levels and net-zero timings were chosen to make the game playable. They are not based on
-  analyses of what is feasible or fair for each region. They can be misleading and may raise
-  ethical questions, for example about historical responsibility, capacity and equity between
+  rigorous analyses of what is feasible or fair for each region, although they try to show different cababilities. They can be misleading and may raise ethical questions, for example about historical responsibility, capacity and equity between
   regions. Emissions are territorial fossil CO₂ for five regions, from 2025 data.
-- **AI-assisted code.** Much of the code was written with the help of Claude (Anthropic) and then
-  reviewed by the author. It may still contain errors or omissions. Please report problems as
-  GitHub issues.
+- **AI-assisted code.** The code was written with the help of Claude (Anthropic) and then
+  results and interface were reviewed by the author. The code may contain errors or omissions. Please report problems as GitHub issues.
 - **Not peer reviewed and not an official FMI position.** The game has not been peer
   reviewed. Its simplifications and framing are the author's and do not represent official views
   of the Finnish Meteorological Institute.
