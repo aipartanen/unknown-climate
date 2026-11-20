@@ -6,3 +6,6 @@ pandas==3.0.2
 xarray==2026.4.0
 netCDF4==1.7.4
 matplotlib==3.10.9
+# Streamlit's web server. Newer starlette (1.10) breaks Streamlit 1.57's file serving:
+# st.pyplot images return HTTP 500. Pinned to the tested version.
+starlette==1.0.0
