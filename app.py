@@ -900,7 +900,31 @@ def _temperature_chart(temp_da, year_start, year_end, upto_year, final,
             .properties(height=440, padding={'left': 5, 'top': 10, 'bottom': 5, 'right': 210}))
 
 
-def _show_temperature_animation(key, drawn_until=ANIM_START - 1, **chart_kwargs):
+def _scroll_to_centre(parent, box_key):
+    """
+    Scroll the page so the keyed container is centred in the window, so an animation that starts
+    below the fold is not missed. The script waits until the first chart frame has given the
+    container its height (polling for at most 3 s), otherwise it would centre an empty box.
+    """
+    parent.html(
+        '<script>(function () {'
+        f"  const selector = '.st-key-{box_key}';"
+        '  const started = Date.now();'
+        '  function tryScroll() {'
+        '    const box = window.parent.document.querySelector(selector) || document.querySelector(selector);'
+        '    if (box && box.offsetHeight > 200) {'
+        "      box.scrollIntoView({behavior: 'smooth', block: 'center'});"
+        '    } else if (Date.now() - started < 3000) {'
+        '      setTimeout(tryScroll, 50);'
+        '    }'
+        '  }'
+        '  tryScroll();'
+        '})();</script>',
+        unsafe_allow_javascript=True,
+    )
+
+
+def _show_temperature_animation(key,drawn_until=ANIM_START - 1, **chart_kwargs):
     """
     Show the temperature chart. The first time `key` is shown the model line is drawn year by
     year (about ANIM_SECONDS; years are grouped beyond ANIM_MAX_FRAMES frames), afterwards the
@@ -909,10 +933,14 @@ def _show_temperature_animation(key, drawn_until=ANIM_START - 1, **chart_kwargs)
     drawn_until : last model year already drawn in the first frame. The default shows the
                   observations only; Phase 2 passes CHECKPOINT, since 2026-2040 was seen in Phase 1.
     """
-    placeholder = st.empty()
+    # Keyed container: Streamlit gives it the CSS class st-key-<key>, which the scroll script finds
+    box_key = f'anim_{key}'
+    box = st.container(key=box_key)
+    placeholder = box.empty()
     played = st.session_state['animations_played']
     temp_da, year_end = chart_kwargs['temp_da'], chart_kwargs['year_end']
     if key not in played:
+        _scroll_to_centre(box, box_key)
         years = [int(y) for y in temp_da.year.values if drawn_until < y <= year_end]
         step = max(1, int(np.ceil(len(years) / ANIM_MAX_FRAMES)))
         # Start from a frame with the line drawn up to drawn_until (by default observations
