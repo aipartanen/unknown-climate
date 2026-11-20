@@ -62,7 +62,7 @@ Runs are stochastic with fixed per-member seeds, so a member always gives the sa
   sources, but they are not a rigorous synthesis of the research literature.
 - **Pledge options and decarbonisation rates are largely hand-picked.** The regional pledge
   levels and net-zero timings were chosen to make the game playable. They are not based on
-  rigorous analyses of what is feasible or fair for each region, although they try to show different cababilities. They can be misleading and may raise ethical questions, for example about historical responsibility, capacity and equity between
+  rigorous analyses of what is feasible or fair for each region, although they try to show different capabilities. They can be misleading and may raise ethical questions, for example about historical responsibility, capacity and equity between
   regions. Emissions are territorial fossil CO₂ for five regions, from 2025 data.
 - **AI-assisted code.** The code was written with the help of Claude (Anthropic) and then
   results and interface were reviewed by the author. The code may contain errors or omissions. Please report problems as GitHub issues.
@@ -71,6 +71,18 @@ Runs are stochastic with fixed per-member seeds, so a member always gives the sa
   of the Finnish Meteorological Institute.
 - **For teachers:** these caveats are worth discussing with students after a game, as part
   of the lesson on uncertainty.
+
+## Privacy
+
+The game asks for no names or other personal information and has no text fields. Choices made
+during a game exist only in the server's memory for that browser session; nothing is saved to
+files or a database, and the game itself sends nothing to other services.
+
+The public version runs on [Streamlit Community Cloud](https://streamlit.io/cloud), which hosts
+apps in the United States. Streamlit (Snowflake) collects anonymous usage statistics and keeps
+standard server logs, as described in the
+[Streamlit privacy notice](https://streamlit.io/privacy-policy). If the app is shared only with
+invited viewers, they sign in to Streamlit, so Streamlit knows their email address.
 
 ## Setup
 
