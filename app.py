@@ -1507,6 +1507,7 @@ def main():
             if key != 'lang':
                 del st.session_state[key]
         st.rerun()
+    st.caption(t('footer_credits'))
 
 
 if __name__ == '__main__':

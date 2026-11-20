@@ -77,10 +77,22 @@ Open the printed URL in a browser (or project it for the class).
 
 | File | Purpose |
 |---|---|
-| `app.py` | Streamlit UI (Finnish text) |
+| `app.py` | Streamlit UI (Finnish and English; text in `texts.py`) |
 | `fair_runner.py` | FaIR wrapper: emissions builder, single-config run, estimate helpers |
 | `precompute_estimates.py` | Offline emulator fit → `data/estimate_emulator.csv` (estimates without FaIR) |
 | `precompute_configs.py` | Offline screening script → `data/screened_configs.csv` |
 | `environment.yml` | Conda environment definition |
 | `data/screened_configs.csv` | Screened member shortlist; regenerate with `precompute_configs.py` |
 | `data/fair_calibrate/` | fair-calibrate v1.6.0 files used by the model (copied from ghgbudgets) |
+| `CREDITS.md` | Data sources, citations and third-party licences |
+
+## Licence and credits
+
+Code and derived data files: © 2026 Finnish Meteorological Institute, [MIT licence](LICENSE).
+
+The game builds on the FaIR climate model (Leach et al. 2021) and its fair-calibrate v1.6.0
+calibration (Smith et al. 2024). It also uses observed temperatures from Indicators of Global
+Climate Change 2025 (IGCC), uncertainty from HadCRUT5 (Met Office, Open Government Licence v3.0),
+emissions from the Global Carbon Budget via Our World in Data, and SSP2-4.5 / SSP1-1.9 scenarios
+from the IIASA SSP Database. The impact figures are from IPCC AR6 and SR1.5. Third-party files keep
+their own licences; see [CREDITS.md](CREDITS.md) for full citations and licences.

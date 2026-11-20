@@ -32,6 +32,14 @@ TEXTS = {
         'fi': '🔄 Aloita alusta (uusi ilmasto)',
         'en': '🔄 Start over (new climate)',
     },
+    'footer_credits': {
+        'fi': '© 2026 Ilmatieteen laitos · MIT-lisenssi · Ilmastomalli FaIR · Data: IGCC, '
+              'Global Carbon Budget, HadCRUT5 (Met Office), IIASA SSP, IPCC · '
+              '[Lähteet ja lisenssit](https://github.com/aipartanen/unknown-climate/blob/main/CREDITS.md)',
+        'en': '© 2026 Finnish Meteorological Institute · MIT licence · FaIR climate model · Data: IGCC, '
+              'Global Carbon Budget, HadCRUT5 (Met Office), IIASA SSP, IPCC · '
+              '[Sources and licences](https://github.com/aipartanen/unknown-climate/blob/main/CREDITS.md)',
+    },
     'nav_back': {'fi': '⬅ Edellinen', 'en': '⬅ Previous'},
     'nav_forward': {'fi': 'Seuraava ➡', 'en': 'Next ➡'},
     'nav_impacts': {'fi': '🌡️ Vaikutukset', 'en': '🌡️ Impacts'},

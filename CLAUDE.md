@@ -65,7 +65,9 @@ choices are commented by the constants in `app.py` (`OBS_WINDOW`, `OBS_2040_SD`,
 - Temperature anomalies relative to 1850–1900 baseline
 - CO₂ emissions in GtCO₂/yr
 - FaIR 2.2.4 with the fair-calibrate v1.6.0 constrained posterior (841 members), vendored in
-  `data/fair_calibrate/` (copied from ghgbudgets)
+  `data/fair_calibrate/` (copied from ghgbudgets). The SSP emissions file is trimmed to ssp119 +
+  ssp245 (IIASA SSP Database licence); do not re-add other scenarios. Sources and licences:
+  `CREDITS.md` (MIT © Finnish Meteorological Institute for code and derived data).
 - FaIR temperature is on timebounds (1 Jan); IGCC observations are annual means at mid-year.
   Annual mean of year Y = mean of timebounds Y and Y+1. Everything the game shows or uses is an
   annual mean (`annual_series()` / `annual_mean()` in `fair_runner.py`), plotted at mid-year
