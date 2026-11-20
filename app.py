@@ -514,21 +514,24 @@ def _exceedance(temperature, weights):
     return {level: float(weights.values[values > level].sum()) for level in EXCEEDANCE_LEVELS}
 
 
-def _estimate_figure(temperature, stages, truth=None):
+def _estimate_figure(temperature, stages, truth=None, show_ecs=True):
     """
     Weighted histograms of ECS (left) and ESTIMATE_YEAR warming (right), one per estimate stage
     (newest stage solid, older ones faint), with each stage's mean and 95 % interval as a bar
     underneath. truth = (ecs, temperature) marks the drawn member's real values (reveal).
+    show_ecs=False draws only the warming panel (Phase 2: ECS does not depend on the decisions).
     """
-    ecs = _load_screened()['ECS']
-    fig, axes = plt.subplots(2, 2, figsize=(11, 4.4), sharex='col',
+    panels = []
+    if show_ecs:
+        ecs = _load_screened()['ECS']
+        panels.append((ecs, t('est_ecs_title'), '°C', None if truth is None else truth[0]))
+    panels.append((temperature, t('est_temp_title', year=ESTIMATE_YEAR), '°C',
+                   None if truth is None else truth[1]))
+    n_cols = len(panels)
+    fig, axes = plt.subplots(2, n_cols, figsize=(11, 4.4) if show_ecs else (6, 4.4),
+                             sharex='col', squeeze=False,
                              gridspec_kw={'height_ratios': [3, 1.3], 'hspace': 0.08})
     fig.patch.set_facecolor(CHART_BG)
-    panels = [
-        (ecs, t('est_ecs_title'), '°C', None if truth is None else truth[0]),
-        (temperature, t('est_temp_title', year=ESTIMATE_YEAR), '°C',
-         None if truth is None else truth[1]),
-    ]
     n_stages = len(stages)
     for col, (values, title, xlabel, true_value) in enumerate(panels):
         ax_hist, ax_bar = axes[0, col], axes[1, col]
@@ -551,7 +554,7 @@ def _estimate_figure(temperature, stages, truth=None):
             ax_bar.plot([mean], [row], 'o', color='white', markeredgecolor=CHART_FG, markersize=6)
             ax_bar.text(1.01, row, f'{_num(mean, 1)} ({_num(lo, 1)}–{_num(hi, 1)})', transform=bar_transform,
                         color=color, fontsize=9, va='center', clip_on=False)
-        if col == 1:
+        if col == n_cols - 1:    # the warming panel
             ax_hist.axvline(PARIS_15, color='#65C06C', linewidth=1.2, linestyle='--')
             ax_hist.axvline(PARIS_20, color='#FFA73E', linewidth=1.2, linestyle='--')
             # Same labels and text shades as the Paris lines of the temperature chart; rotated
@@ -575,17 +578,23 @@ def _estimate_figure(temperature, stages, truth=None):
         ax_bar.xaxis.set_major_formatter(NUM_TICKS)
     # Legend above the panels, so it never hides the histograms or the true-value label
     handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='upper center', ncol=len(labels), frameon=False,
-               labelcolor=CHART_FG, fontsize=9, bbox_to_anchor=(0.45, 1.0))
-    fig.subplots_adjust(left=0.03, right=0.88, wspace=0.32, bottom=0.14, top=0.86)
+    if show_ecs:
+        fig.legend(handles, labels, loc='upper center', ncol=len(labels), frameon=False,
+                   labelcolor=CHART_FG, fontsize=9, bbox_to_anchor=(0.45, 1.0))
+        fig.subplots_adjust(left=0.03, right=0.88, wspace=0.32, bottom=0.14, top=0.86)
+    else:
+        # Single narrow panel: legend in two rows, more room on the right for the interval text
+        fig.legend(handles, labels, loc='upper center', ncol=2, frameon=False,
+                   labelcolor=CHART_FG, fontsize=9, bbox_to_anchor=(0.42, 1.0))
+        fig.subplots_adjust(left=0.04, right=0.76, bottom=0.14, top=0.80)
     return fig
 
 
-def _show_estimates(cuts, netzero_years, upto_screen, truth=None):
+def _show_estimates(cuts, netzero_years, upto_screen, truth=None, show_ecs=True):
     """Histograms of the estimate stages and the exceedance probabilities of the newest stage."""
     temperature = emulate_temperature(cuts, netzero_years, ESTIMATE_YEAR)
     stages = _stage_weights(upto_screen)
-    st.pyplot(_estimate_figure(temperature, stages, truth))
+    st.pyplot(_estimate_figure(temperature, stages, truth, show_ecs=show_ecs))
     st.caption(t('est_caption'))
 
     newest = list(stages)[-1]
@@ -977,7 +986,8 @@ def _emissions_pathway_chart(cuts, netzero_years):
                 em[i] = 0.0
         region_em[r] = em
 
-    fig, ax = plt.subplots(figsize=(9, 3))
+    # Same height as the estimate figure beside it on the Phase 2 screen
+    fig, ax = plt.subplots(figsize=(6, 4.4))
     fig.patch.set_facecolor(CHART_BG)
     ax.set_facecolor(CHART_BG)
 
@@ -1281,10 +1291,15 @@ def _screen_phase2():
     st.session_state['netzero_years']   = netzero_years
     st.session_state['netzero_indices'] = netzero_indices
 
-    st.pyplot(_emissions_pathway_chart(cuts, netzero_years))
-
-    st.subheader(t('p2_estimate'))
-    _show_estimates(cuts, netzero_years, 'phase2')
+    # Emissions and the resulting warming estimate side by side, so the estimate is in view
+    # while the net-zero years are chosen. ECS is left out: the decisions do not change it and
+    # its estimate was already shown on the research screen.
+    col_emissions, col_estimate = st.columns(2)
+    with col_emissions:
+        st.pyplot(_emissions_pathway_chart(cuts, netzero_years))
+    with col_estimate:
+        st.subheader(t('p2_estimate'))
+        _show_estimates(cuts, netzero_years, 'phase2', show_ecs=False)
 
     if st.button(t('p2_button'), type='primary'):
         with st.spinner(t('spinner_fair')):
