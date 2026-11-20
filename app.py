@@ -542,12 +542,14 @@ def _estimate_temperature_range(use_sliders: bool) -> tuple:
     return float(np.floor(min(lows) * 2) / 2), float(np.ceil(max(highs) * 2) / 2)
 
 
-def _estimate_figure(temperature, stages, truth=None, show_ecs=True):
+def _estimate_figure(temperature, stages, truth=None, show_ecs=True, compact=False):
     """
     Weighted histograms of ECS (left) and ESTIMATE_YEAR warming (right), one per estimate stage
     (newest stage solid, older ones faint), with each stage's mean and 95 % interval as a bar
     underneath. truth = (ecs, temperature) marks the drawn member's real values (reveal).
     show_ecs=False draws only the warming panel (Phase 2: ECS does not depend on the decisions).
+    compact=True (pledges screen, prior only) drops the stage legend and shrinks the interval
+    row, so the screen fits with the pledge choices still visible.
     """
     panels = []
     if show_ecs:
@@ -556,9 +558,12 @@ def _estimate_figure(temperature, stages, truth=None, show_ecs=True):
     panels.append((temperature, t('est_temp_title', year=ESTIMATE_YEAR), '°C',
                    None if truth is None else truth[1]))
     n_cols = len(panels)
-    fig, axes = plt.subplots(2, n_cols, figsize=(11, 4.4) if show_ecs else (6, 4.4),
-                             sharex='col', squeeze=False,
-                             gridspec_kw={'height_ratios': [3, 1.3], 'hspace': 0.08})
+    if compact:
+        figsize, height_ratios = (6, 3.4), [3, 0.5]
+    else:
+        figsize, height_ratios = (11, 4.4) if show_ecs else (6, 4.4), [3, 1.3]
+    fig, axes = plt.subplots(2, n_cols, figsize=figsize, sharex='col', squeeze=False,
+                             gridspec_kw={'height_ratios': height_ratios, 'hspace': 0.08})
     fig.patch.set_facecolor(CHART_BG)
     n_stages = len(stages)
     for col, (values, title, xlabel, true_value) in enumerate(panels):
@@ -611,7 +616,9 @@ def _estimate_figure(temperature, stages, truth=None, show_ecs=True):
         ax_bar.xaxis.set_major_formatter(NUM_TICKS)
     # Legend above the panels, so it never hides the histograms or the true-value label
     handles, labels = axes[0, 0].get_legend_handles_labels()
-    if show_ecs:
+    if compact:
+        fig.subplots_adjust(left=0.04, right=0.76, bottom=0.17, top=0.90)
+    elif show_ecs:
         fig.legend(handles, labels, loc='upper center', ncol=len(labels), frameon=False,
                    labelcolor=CHART_FG, fontsize=9, bbox_to_anchor=(0.45, 1.0))
         fig.subplots_adjust(left=0.03, right=0.88, wspace=0.32, bottom=0.14, top=0.86)
@@ -623,11 +630,11 @@ def _estimate_figure(temperature, stages, truth=None, show_ecs=True):
     return fig
 
 
-def _show_estimates(cuts, netzero_years, upto_screen, truth=None, show_ecs=True):
+def _show_estimates(cuts, netzero_years, upto_screen, truth=None, show_ecs=True, compact=False):
     """Histograms of the estimate stages and the exceedance probabilities of the newest stage."""
     temperature = emulate_temperature(cuts, netzero_years, ESTIMATE_YEAR)
     stages = _stage_weights(upto_screen)
-    st.pyplot(_estimate_figure(temperature, stages, truth, show_ecs=show_ecs))
+    st.pyplot(_estimate_figure(temperature, stages, truth, show_ecs=show_ecs, compact=compact))
     st.caption(t('est_caption'))
 
     newest = list(stages)[-1]
@@ -991,7 +998,7 @@ def _show_temperature_animation(key,drawn_until=ANIM_START - 1, **chart_kwargs):
         st.rerun()
 
 
-def _emissions_bar_chart(cuts):
+def _emissions_bar_chart(cuts, title):
     """Bar chart: BASE_YEAR baseline vs. pledged CHECKPOINT emissions per region."""
     regions = list(REGION_EMISSIONS_BASE_GTCO2.keys())
     base    = [REGION_EMISSIONS_BASE_GTCO2[r] for r in regions]
@@ -1000,7 +1007,7 @@ def _emissions_bar_chart(cuts):
     later   = [em_2100[r] for r in regions]
     colors  = [REGION_COLORS[r] for r in regions]
 
-    fig, ax = plt.subplots(figsize=(8, 3.5))
+    fig, ax = plt.subplots(figsize=(6, 4.4))    # same size as the Phase 2 pathway chart
     fig.patch.set_facecolor(CHART_BG)
     ax.set_facecolor(CHART_BG)
 
@@ -1017,6 +1024,7 @@ def _emissions_bar_chart(cuts):
     ax.yaxis.set_major_formatter(NUM_TICKS)
     ax.tick_params(colors=CHART_FG)
     ax.legend(facecolor=CHART_BG, labelcolor=CHART_FG, fontsize=9)
+    ax.set_title(title, color=CHART_FG, fontsize=10, fontweight='bold')
     for spine in ax.spines.values():
         spine.set_edgecolor(CHART_SPINE)
     fig.tight_layout()
@@ -1167,9 +1175,18 @@ def _screen_pledges():
     total_cut_pct = (1 - total_chk / TOTAL_BASE) * 100
     change_str = (t('pl_cut', pct=f'{total_cut_pct:.0f}') if total_cut_pct >= 0
                   else t('pl_growth', pct=f'{-total_cut_pct:.0f}'))
-    st.info(t('pl_total', year=CHECKPOINT, total=_num(total_chk, 1), change=change_str,
-              base_year=BASE_YEAR))
-    st.pyplot(_emissions_bar_chart(cuts))
+    # Shown as the bar chart's title (not a separate box) to save vertical space
+    total_title = t('pl_total', year=CHECKPOINT, total=_num(total_chk, 1), change=change_str,
+                    base_year=BASE_YEAR)
+    # Emissions and the resulting 2100 warming estimate side by side, as on the net-zero screen,
+    # so the estimate is in view while the pledges are chosen. Only the prior exists here; ECS
+    # is left out because the pledges do not change it (it gets its own screen next).
+    col_emissions, col_estimate = st.columns(2)
+    with col_emissions:
+        st.pyplot(_emissions_bar_chart(cuts, total_title))
+    with col_estimate:
+        st.subheader(t('pl_estimate'))
+        _show_estimates(cuts, None, 'prior', show_ecs=False, compact=True)
 
     # Prior estimate (whole screened ensemble, equal weights): mean and 95 % interval.
     est_40  = emulate_temperature(cuts, None, CHECKPOINT)

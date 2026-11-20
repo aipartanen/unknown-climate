@@ -148,9 +148,11 @@ TEXTS = {
     'pl_cut': {'fi': '{pct} % leikkaus', 'en': '{pct}% cut'},
     'pl_growth': {'fi': '{pct} % kasvu', 'en': '{pct}% growth'},
     'pl_total': {
-        'fi': '**Yhteensä {year}:** {total} GtCO₂/vuosi  ({change} vuoden {base_year} tasosta)',
-        'en': '**Total {year}:** {total} GtCO₂/year  ({change} from the {base_year} level)',
+        # Plain text (no Markdown): shown as the title of the matplotlib emissions bar chart
+        'fi': 'Yhteensä {year}: {total} GtCO₂/vuosi ({change} vuoden {base_year} tasosta)',
+        'en': 'Total {year}: {total} GtCO₂/year ({change} from the {base_year} level)',
     },
+    'pl_estimate': {'fi': 'Arvio näillä lupauksilla', 'en': 'Estimate with these pledges'},
     'pl_prior': {
         'fi': '**Alkuarvio lämpötilasta** (keskiarvo ja 95 %:n väli – emme vielä tiedä, '
               'kuinka herkkä ilmastomme on):  \n'
