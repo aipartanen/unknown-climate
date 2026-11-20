@@ -514,6 +514,34 @@ def _exceedance(temperature, weights):
     return {level: float(weights.values[values > level].sum()) for level in EXCEEDANCE_LEVELS}
 
 
+@st.cache_data
+def _estimate_temperature_range(use_sliders: bool) -> tuple:
+    """
+    Fixed x range (°C) of the ESTIMATE_YEAR warming histogram, so the axis does not move when the
+    players change emissions. Envelope over all members of the extreme choices: every region at
+    its most and least ambitious pledge, with no Phase 2 net zero (emissions flat after
+    CHECKPOINT, used before Phase 2) and with the fastest / slowest net-zero option. Rounded
+    outward to 0.5 °C.
+    """
+    regions = list(EMISSION_OPTIONS)
+    if use_sliders:
+        # Slider range −100 … +80 % change 2025→2040, i.e. cut fraction 1.0 … −0.8
+        extreme_cuts = [{region: 1.0 for region in regions}, {region: -0.8 for region in regions}]
+    else:
+        extreme_cuts = [{region: EMISSION_OPTIONS[region][-1][1] for region in regions},
+                        {region: EMISSION_OPTIONS[region][0][1] for region in regions}]
+    offsets = [NETZERO_OFFSETS[0][1], NETZERO_OFFSETS[-1][1]]
+    lows, highs = [], []
+    for cuts in extreme_cuts:
+        netzero_options = [None] + [{region: _min_netzero_year(cuts[region]) + offset
+                                     for region in regions} for offset in offsets]
+        for netzero_years in netzero_options:
+            temperature = emulate_temperature(cuts, netzero_years, ESTIMATE_YEAR)
+            lows.append(temperature.min())
+            highs.append(temperature.max())
+    return float(np.floor(min(lows) * 2) / 2), float(np.ceil(max(highs) * 2) / 2)
+
+
 def _estimate_figure(temperature, stages, truth=None, show_ecs=True):
     """
     Weighted histograms of ECS (left) and ESTIMATE_YEAR warming (right), one per estimate stage
@@ -540,7 +568,12 @@ def _estimate_figure(temperature, stages, truth=None, show_ecs=True):
             ax.tick_params(colors=CHART_FG)
             for spine in ax.spines.values():
                 spine.set_edgecolor(CHART_SPINE)
-        bins = np.linspace(values.min(), values.max(), 36)
+        if col == n_cols - 1:    # the warming panel: fixed axis, so emission changes are visible
+            x_min, x_max = _estimate_temperature_range(USE_SLIDERS)
+            bins = np.arange(x_min, x_max + 1e-9, 0.125)    # same bins for every choice
+            ax_hist.set_xlim(x_min, x_max)
+        else:
+            bins = np.linspace(values.min(), values.max(), 36)
         bar_transform = blended_transform_factory(ax_bar.transAxes, ax_bar.transData)
         for row, (stage, weights) in enumerate(stages.items()):
             label, color = _stage_label(stage), STAGE_STYLE[stage][1]
