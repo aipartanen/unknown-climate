@@ -76,13 +76,23 @@ Runs are stochastic with fixed per-member seeds, so a member always gives the sa
 
 ### Prerequisites
 
-- [Mamba](https://mamba.readthedocs.io/) or Conda
+- Python 3.11 (3.12 also works)
 - fair-calibrate v1.6.0 data, included in `data/fair_calibrate/` (see the README there)
 
 ### Install
 
 ```bash
-mamba env create -f environment.yml
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+`requirements.txt` pins the versions the app is tested with; Streamlit Community Cloud installs
+from it. For development with Mamba or Conda (Python 3.11 from conda-forge) there is
+`environment-dev.yml`:
+
+```bash
+mamba env create -f environment-dev.yml
 mamba activate climate-game
 ```
 
@@ -101,7 +111,9 @@ Re-run if you change the screening criteria. The CSV is committed so the app sta
 streamlit run app.py
 ```
 
-Open the printed URL in a browser (or project it for the class).
+Open the printed URL in a browser (or project it for the class). For the instructor mode with
+free sliders instead of four options per region, add `?mode=sliders` to the URL
+(e.g. `http://localhost:8501/?mode=sliders`).
 
 ## Files
 
@@ -111,7 +123,8 @@ Open the printed URL in a browser (or project it for the class).
 | `fair_runner.py` | FaIR wrapper: emissions builder, single-config run, estimate helpers |
 | `precompute_estimates.py` | Offline emulator fit → `data/estimate_emulator.csv` (estimates without FaIR) |
 | `precompute_configs.py` | Offline screening script → `data/screened_configs.csv` |
-| `environment.yml` | Conda environment definition |
+| `requirements.txt` | Pinned pip dependencies (used by Streamlit Community Cloud) |
+| `environment-dev.yml` | Conda environment for development |
 | `data/screened_configs.csv` | Screened member shortlist; regenerate with `precompute_configs.py` |
 | `data/fair_calibrate/` | fair-calibrate v1.6.0 files used by the model (copied from ghgbudgets) |
 | `CREDITS.md` | Data sources, citations and third-party licences |

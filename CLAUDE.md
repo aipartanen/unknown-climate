@@ -3,8 +3,9 @@
 ## What this is
 
 A Streamlit classroom app for grades 7–9 climate negotiation simulation (also usable with adults).
-Run with `streamlit run app.py`; instructor slider mode with `streamlit run app.py -- --sliders`.
-Conda env in `environment.yml` (Python 3.11, FaIR 2.2). UI in Finnish and English: the language is
+Run with `streamlit run app.py`; instructor slider mode by opening the URL with `?mode=sliders`.
+Pinned pip dependencies in `requirements.txt` (used by Streamlit Cloud); conda dev env in
+`environment-dev.yml` (Python 3.11, FaIR 2.2). UI in Finnish and English: the language is
 chosen on the first page and can be switched at any time (FI/EN switch at the top right).
 
 ## Publishing goal

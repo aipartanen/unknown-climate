@@ -23,13 +23,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from matplotlib.transforms import blended_transform_factory
-import sys
 import streamlit as st
 import altair as alt
 
-# Pass --sliders on the command line to enable free continuous sliders
-# instead of the default radio buttons.  Useful for instructor demos.
-USE_SLIDERS: bool = '--sliders' in sys.argv
+# Open the app with ?mode=sliders in the URL to get free continuous sliders
+# instead of the default radio buttons.  Useful for instructor demos.  A URL parameter
+# (not a CLI flag) because Streamlit Community Cloud cannot pass script arguments.
+USE_SLIDERS: bool = st.query_params.get('mode') == 'sliders'
 
 from fair_runner import (
     BASE_YEAR,
@@ -1084,7 +1084,7 @@ def _emissions_pathway_chart(cuts, netzero_years):
 def _cut_input(region: str, option_indices: dict, disabled: bool = False) -> float:
     """
     Return the chosen cut fraction for a region.
-    In slider mode (--sliders flag): free slider of the emissions change 2025→2040 in %
+    In slider mode (?mode=sliders URL parameter): free slider of the emissions change 2025→2040 in %
     (negative = reduction), the same sign as the radio labels; returns the cut fraction.
     In radio mode (default): 4-option radio from EMISSION_OPTIONS.
     Updates option_indices[region] in place. disabled locks the input (after the draw).
