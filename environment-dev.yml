@@ -11,4 +11,3 @@ dependencies:
   - matplotlib
   - streamlit
   - altair
-  - python-dotenv
