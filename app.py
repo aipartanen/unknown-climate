@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Ilmastoneuvottelupeli — FaIR-pohjainen luokkahuonedemosovellus.
+Tuntematon ilmasto – ilmastoneuvottelupeli epävarmuuden keskellä (Unknown Climate).
+FaIR-pohjainen luokkahuonedemosovellus.
 
 Screen flow (SCREENS):
   pledges   Phase 1: each group sets its 2040 fossil CO2 cut (CHECKPOINT)
@@ -1452,7 +1453,9 @@ def _screen_reveal():
 
 def _language_picker():
     """First page of a new session: choose the language (both languages shown, nothing chosen yet)."""
-    st.title('🌍 Ilmastoneuvottelupeli · Climate Negotiation Game')
+    st.title('🌍 Tuntematon ilmasto · Unknown Climate')
+    st.markdown('Tuntematon ilmasto – ilmastoneuvottelupeli epävarmuuden keskellä  \n'
+                'Unknown Climate: a climate negotiation game under uncertainty')
     st.markdown('Valitse kieli · Choose the language')
     col_fi, col_en, _ = st.columns([1, 1, 2])
     if col_fi.button('🇫🇮 Suomi', type='primary', width='stretch'):
@@ -1475,7 +1478,7 @@ def _language_switch():
 
 def main():
     st.set_page_config(
-        page_title='Ilmastoneuvottelupeli · Climate Negotiation Game',
+        page_title='Tuntematon ilmasto · Unknown Climate',
         page_icon='🌍',
         layout='wide',
     )
@@ -1483,6 +1486,8 @@ def main():
         _language_picker()
         return
     _language_switch()
+    # Second call after the switch, so the tab title follows the language on the same rerun.
+    st.set_page_config(page_title=t('app_name'))
     _init_state()
 
     if st.session_state['show_impacts']:

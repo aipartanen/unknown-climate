@@ -28,6 +28,10 @@ def t(key, **kwargs):
 
 TEXTS = {
     # --- general ---
+    'app_name': {
+        'fi': 'Tuntematon ilmasto',
+        'en': 'Unknown Climate',
+    },
     'start_over': {
         'fi': '🔄 Aloita alusta (uusi ilmasto)',
         'en': '🔄 Start over (new climate)',

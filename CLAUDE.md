@@ -1,4 +1,4 @@
-# Ilmastoneuvottelupeli — Project Notes for Claude
+# Tuntematon ilmasto (Unknown Climate) — Project Notes for Claude
 
 ## What this is
 

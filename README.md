@@ -1,4 +1,6 @@
-# Ilmastoneuvottelupeli
+# Tuntematon ilmasto · Unknown Climate
+
+*Unknown Climate: a climate negotiation game under uncertainty*
 
 Interactive classroom demo for grades 7–9 on climate negotiations and the Paris Agreement.
 Built with [Streamlit](https://streamlit.io/) and the [FaIR v2.2](https://docs.fairmodel.net/) climate model.
